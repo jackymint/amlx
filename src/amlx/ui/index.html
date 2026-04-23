@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>amlx Control Room</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <div class="backdrop"></div>
+    <main class="shell">
+      <header class="hero">
+        <p class="eyebrow">LOCAL INFERENCE CONTROL</p>
+        <h1>AMLX</h1>
+        <p class="subtitle">MacBook-first dashboard for cache, batching, and API throughput.</p>
+      </header>
+
+      <section class="topbar">
+        <section class="workspace-tabs" aria-label="Workspace Tabs" role="tablist">
+          <button id="tab-metrics" class="tab active" type="button" role="tab" aria-selected="true" data-tab="metrics">Metrics</button>
+          <button id="tab-chat" class="tab" type="button" role="tab" aria-selected="false" data-tab="chat">Chat Console</button>
+          <button id="tab-models" class="tab" type="button" role="tab" aria-selected="false" data-tab="models">Model Download Center</button>
+        </section>
+        <div class="runtime">
+          <label class="gpu-limit-control" for="gpu-limit-range">
+            <span>gpu limit</span>
+            <input id="gpu-limit-range" type="range" min="20" max="100" step="5" value="100" />
+            <strong id="gpu-limit-value">100%</strong>
+          </label>
+          <label class="gpu-limit-control" for="model-cap-select">
+            <span>model cap</span>
+            <select id="model-cap-select">
+              <option value="0">Unlimited</option>
+              <option value="3">3B</option>
+              <option value="7">7B</option>
+              <option value="14">14B</option>
+              <option value="32">32B</option>
+            </select>
+          </label>
+          <button id="cache-clear" type="button" class="ghost mini">Clear Cache</button>
+          <span id="runtime-engine" class="chip">engine: ...</span>
+          <span id="runtime-health" class="chip health">status: ...</span>
+        </div>
+      </section>
+
+      <section id="panel-metrics" class="tab-panel grid" aria-label="Live metrics">
+        <article class="card lift">
+          <h2>Cache Hits</h2>
+          <p id="cache-hit-total" class="metric">0</p>
+          <div class="split">
+            <div><span>memory</span><strong id="memory-hits">0</strong></div>
+            <div><span>disk</span><strong id="disk-hits">0</strong></div>
+            <div><span>blocks</span><strong id="block-hits">0</strong></div>
+          </div>
+        </article>
+
+        <article class="card lift">
+          <h2>Misses / Writes</h2>
+          <p id="misses" class="metric">0</p>
+          <div class="split">
+            <div><span>misses</span><strong id="misses-small">0</strong></div>
+            <div><span>block writes</span><strong id="block-writes">0</strong></div>
+          </div>
+        </article>
+
+        <article class="card lift">
+          <h2>Batch Scheduler</h2>
+          <p id="batch-runs" class="metric">0</p>
+          <div class="split">
+            <div><span>enqueued</span><strong id="scheduler-enqueued">0</strong></div>
+            <div><span>processed</span><strong id="scheduler-processed">0</strong></div>
+            <div><span>items</span><strong id="scheduler-items">0</strong></div>
+          </div>
+        </article>
+
+        <article class="card pulse">
+          <h2>Throughput Pulse</h2>
+          <canvas id="pulse" width="480" height="180" aria-label="Throughput chart"></canvas>
+        </article>
+      </section>
+
+      <section id="panel-chat" class="tab-panel studio hidden">
+        <div class="panel chat-panel">
+          <div class="chat-model-row">
+            <label for="chat-model-select">Chat Model</label>
+            <select id="chat-model-select"></select>
+            <span id="chat-model-source" class="chip">source: ...</span>
+          </div>
+          <div id="chat-log" class="chat-log" aria-live="polite"></div>
+          <div class="chat-composer">
+            <textarea id="chat-input" rows="1" placeholder="Message amlx..."></textarea>
+            <div class="chat-composer-actions">
+              <button id="chat-clear" type="button" class="ghost mini">Clear</button>
+              <button id="chat-send" type="button">Send</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="panel-models" class="tab-panel models hidden">
+        <div class="panel">
+          <h2>Model Download Center</h2>
+          <p class="hint">Curated MLX-ready models by default. Type in search to query online.</p>
+          <div class="search-row">
+            <input id="model-search" type="search" placeholder="Search model (name, id, tag)" />
+            <span id="model-system" class="system-pill">machine: ...</span>
+          </div>
+          <div id="catalog" class="catalog"></div>
+          <div class="pager">
+            <button id="model-prev" type="button" class="ghost">Prev</button>
+            <span id="model-page-info">Page 1</span>
+            <button id="model-next" type="button" class="ghost">Next</button>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>Download Jobs</h2>
+          <div id="downloads" class="jobs">No downloads yet.</div>
+          <h2 class="mt">Loaded In Memory</h2>
+          <div id="loaded-models" class="jobs">No loaded models.</div>
+          <h2 class="mt">Installed Models</h2>
+          <div id="installed" class="jobs">No installed models.</div>
+        </div>
+      </section>
+    </main>
+    <script src="/assets/app.js" defer></script>
+  </body>
+</html>

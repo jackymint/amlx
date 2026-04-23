@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "amlx"
+version = "0.1.0"
+description = "MacBook-first local AI inference server with OpenAI-compatible API"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "amlx contributors" }
+]
+license = { text = "Apache-2.0" }
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.30.0",
+  "pydantic>=2.7.0",
+  "typer>=0.12.0",
+  "huggingface_hub>=0.30.0",
+]
+
+[project.optional-dependencies]
+mlx = [
+  "mlx-lm>=0.20.0"
+]
+dev = [
+  "pytest>=8.2.0",
+  "httpx>=0.27.0",
+]
+
+[project.scripts]
+amlx = "amlx.cli:app"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+amlx = ["ui/*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+addopts = "-q"
