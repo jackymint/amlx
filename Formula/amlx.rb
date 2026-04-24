@@ -173,17 +173,15 @@ class Amlx < Formula
   # ── install ──────────────────────────────────────────────────────────────────
 
   def install
-    # Use "python3" (same as virtualenv_install_with_resources default) to avoid venv creation failure
     venv = virtualenv_create(libexec, "python3")
 
-    # mlx has no sdist — install directly from cached wheel file to avoid extraction issue
-    system libexec/"bin/pip", "install", "--no-deps", resource("mlx").cached_download
+    # mlx has no sdist — copy wheel to buildpath (sandbox-safe) then install directly
+    mlx_wheel = buildpath/"mlx.whl"
+    FileUtils.cp resource("mlx").cached_download, mlx_wheel
+    system libexec/"bin/pip", "install", "--no-deps", mlx_wheel
 
-    # Install all other resources normally (pydantic-core builds from source via Rust)
-    resources.each do |r|
-      next if r.name == "mlx"
-      venv.pip_install r
-    end
+    # All other resources install normally (pydantic-core builds from source via Rust)
+    resources.reject { |r| r.name == "mlx" }.each { |r| venv.pip_install r }
 
     venv.pip_install_and_link buildpath
   end
