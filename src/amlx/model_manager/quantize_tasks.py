@@ -4,8 +4,6 @@ from .shared import *
 
 class ModelManagerQuantizeTasksMixin:
     def _run_quantize(self, task_id: str) -> None:
-        import sys
-
         with self._lock:
             task = self._quantize_tasks.get(task_id)
         if task is None:
@@ -21,38 +19,39 @@ class ModelManagerQuantizeTasksMixin:
         print(f"[amlx] quantize start: {model_id} → {q_bits}bit → {output_path}", flush=True)
 
         try:
-            script = (
-                "from mlx_lm import convert; "
-                f"convert(hf_path={effective_model!r}, mlx_path={output_path!r}, "
-                f"quantize=True, q_bits={q_bits}, q_group_size={q_group_size})"
-            )
-            proc = subprocess.Popen(
-                [sys.executable, "-c", script],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-            )
-            with self._lock:
-                self._quantize_procs[task_id] = proc
+            from mlx_lm import convert as mlx_convert
+
+            error_holder: list[Exception] = []
+            done = threading.Event()
+
+            def run_convert() -> None:
+                try:
+                    mlx_convert(
+                        hf_path=effective_model,
+                        mlx_path=output_path,
+                        quantize=True,
+                        q_bits=q_bits,
+                        q_group_size=q_group_size,
+                    )
+                except Exception as exc:
+                    error_holder.append(exc)
+                finally:
+                    done.set()
+
+            worker = threading.Thread(target=run_convert, daemon=True)
+            worker.start()
 
             progress = 1
-            while proc.poll() is None:
+            while not done.wait(timeout=2.0):
                 with self._lock:
                     if self._quantize_tasks.get(task_id) and self._quantize_tasks[task_id].cancelled:
-                        proc.kill()
-                        proc.wait()
-                        self._quantize_procs.pop(task_id, None)
                         return
                 progress = min(95, progress + 2)
                 self._update_quantize(task_id, progress=progress, message="Quantizing layers...")
-                sleep(2.0)
 
-            with self._lock:
-                self._quantize_procs.pop(task_id, None)
-
-            stdout, _ = proc.communicate()
-            if proc.returncode != 0:
-                raise RuntimeError(f"Quantize process failed (exit {proc.returncode})")
+            worker.join(timeout=0.1)
+            if error_holder:
+                raise error_holder[0]
 
             self._update_quantize(
                 task_id,

@@ -43,29 +43,33 @@ class ModelManagerDownloadRunnerMixin:
                 log(f"[info] expected size ~{expected_bytes // (1024**3) or round(expected_bytes / (1024**2))} {'GB' if expected_bytes >= 1024**3 else 'MB'}")
 
             if self._downloader is self._default_downloader:
-                import sys
+                from huggingface_hub import snapshot_download
                 target_dir.parent.mkdir(parents=True, exist_ok=True)
                 local_dir = self.models_dir / target_rel
                 local_dir.mkdir(parents=True, exist_ok=True)
-                script = (
-                    "from huggingface_hub import snapshot_download; "
-                    f"snapshot_download(repo_id={model_id!r}, local_dir={str(local_dir)!r}, resume_download=True)"
-                )
-                proc = subprocess.Popen(
-                    [sys.executable, "-c", script],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.PIPE,
-                )
-                with self._lock:
-                    self._download_procs[task_id] = proc
+
+                result: dict[str, Path] = {}
+                error_holder: list[Exception] = []
+                done = threading.Event()
+                cancel_event = threading.Event()
+
+                def run_default_download() -> None:
+                    try:
+                        snapshot_download(repo_id=model_id, local_dir=str(local_dir), resume_download=True)
+                        result["path"] = local_dir
+                    except Exception as exc:
+                        error_holder.append(exc)
+                    finally:
+                        done.set()
+
+                worker = threading.Thread(target=run_default_download, daemon=True)
+                worker.start()
 
                 nonlocal_pct = [1]
-                while proc.poll() is None:
+                while not done.wait(timeout=1.0):
                     with self._lock:
                         if self._tasks.get(task_id) and self._tasks[task_id].cancelled:
-                            proc.kill()
-                            proc.wait()
-                            self._download_procs.pop(task_id, None)
+                            cancel_event.set()
                             print(f"[amlx] download cancelled: {model_id}", flush=True)
                             log("[cancelled] download cancelled by user")
                             return
@@ -81,16 +85,11 @@ class ModelManagerDownloadRunnerMixin:
                     if milestone > last_pct_logged and milestone > 0:
                         log(f"[progress] {rolling}%")
                         last_pct_logged = milestone
-                    sleep(1.0)
 
-                with self._lock:
-                    self._download_procs.pop(task_id, None)
-
-                if proc.returncode != 0:
-                    _, stderr_bytes = proc.communicate()
-                    err_msg = stderr_bytes.decode(errors="replace").strip()[-300:] if stderr_bytes else ""
-                    raise RuntimeError(f"Download process failed (exit {proc.returncode}): {err_msg}")
-                path = local_dir
+                worker.join(timeout=0.1)
+                if error_holder:
+                    raise error_holder[0]
+                path = result["path"]
             else:
                 result: dict[str, Path] = {}
                 error_holder: list[Exception] = []
