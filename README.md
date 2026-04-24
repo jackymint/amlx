@@ -20,7 +20,7 @@ MacBook-first local AI inference server with OpenAI-compatible API, built for Ap
 **Homebrew (recommended)**
 
 ```bash
-brew tap jackymint/amlx
+brew tap jackymint/amlx https://github.com/jackymint/amlx
 brew install amlx
 ```
 
