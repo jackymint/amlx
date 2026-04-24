@@ -3,14 +3,11 @@ class Amlx < Formula
 
   desc "MacBook-first local AI inference server with OpenAI-compatible API"
   homepage "https://github.com/jackymint/amlx"
-  url "https://github.com/jackymint/amlx/archive/refs/tags/v0.1.0.tar.gz"
-  sha256 "TODO: run `curl -L <tarball-url> | shasum -a 256` after publishing the release"
+  url "https://github.com/jackymint/amlx/archive/refs/tags/v0.5.0.tar.gz"
+  sha256 "7db763a032c70cc8c77050f68ef95c5984115210af9bfc7e665615ab668b8134"
   license "Apache-2.0"
 
-  bottle :unneeded
-
   depends_on "python@3.12"
-  depends_on :macos # Apple Silicon (MLX requires macOS + ARM)
 
   # ── core dependencies ────────────────────────────────────────────────────────
 
