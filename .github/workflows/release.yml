@@ -43,18 +43,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python virtualenv
         run: |
-          brew install python@3.12 || true
-          python3.12 -m pip install --upgrade pip
+          python3 -m venv /tmp/build-venv
+          echo "/tmp/build-venv/bin" >> "$GITHUB_PATH"
 
       - name: Install dependencies and PyInstaller
         run: |
-          python3.12 -m pip install -e '.[mlx]' pyinstaller
+          pip install --upgrade pip
+          pip install -e '.[mlx]' pyinstaller
 
       - name: Build binary
         run: |
-          python3.12 -m PyInstaller amlx.spec --distpath dist --workpath /tmp/pyinstaller-work
+          python -m PyInstaller amlx.spec --distpath dist --workpath /tmp/pyinstaller-work
 
       - name: Package binary
         id: binary
