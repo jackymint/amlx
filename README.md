@@ -1,148 +1,172 @@
 # amlx
 
-MacBook-first local AI inference server inspired by oMLX.
+MacBook-first local AI inference server with OpenAI-compatible API, built for Apple Silicon.
 
-## Goals
+## Features
 
-- OpenAI-compatible API for local coding agents
-- 3-layer cache (RAM + SQLite + paged SSD blocks)
-- Continuous batching scheduler for concurrent local requests
-- Easy local operation on Apple Silicon MacBooks
-- Clean adapter interface for MLX runtime integration
+- **OpenAI-compatible API** — drop-in for local coding agents and tools
+- **3-layer prefix cache** — RAM (LRU) + SQLite disk + paged SSD blocks
+- **Continuous batching scheduler** — handles concurrent requests efficiently
+- **LoRA / QLoRA fine-tuning** — train loaded models directly from the dashboard
+- **Quantization** — reduce model size on-device
+- **Dashboard UI** — download, chat, train, and quantize from the browser
+- **Tool calling** — OpenAI-style `tools` + `tool_choice`
+- **Thinking / reasoning** — summarized reasoning tokens in response
+- **GPU duty-cycle cap** — keep your MacBook cool under sustained load
+- **Homebrew install** — one-line install via tap
 
-## Quickstart (macOS)
+## Install
+
+**Homebrew (recommended)**
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+brew tap jackymint/amlx
+brew install amlx
+```
+
+**pip**
+
+```bash
+pip install 'amlx[mlx]'
+```
+
+**From source**
+
+```bash
+git clone https://github.com/jackymint/amlx
+cd amlx
+python3 -m venv .venv && source .venv/bin/activate
 pip install -e '.[mlx]'
-amlx serve --host 127.0.0.1 --port 8000
 ```
 
-Open dashboard UI:
+> Requires macOS + Apple Silicon (MLX backend).
+
+## Quickstart
 
 ```bash
-open http://127.0.0.1:8000/
+amlx serve
 ```
 
-Download models from dashboard:
+Open dashboard:
 
-- Open `DOWNLOAD MODEL`
-- Search models by name/tag/id in the search box (online from Hugging Face)
-- Browse results with pagination (`Prev` / `Next`) to avoid long scrolling
-- Each model shows machine fit (`Good fit`, `Runs but tight`, `Not suitable`)
-- Click `Download` on a model
-- Track progress in `Download Jobs`
-- Remove models from memory with `Unload` and remove disk installs with `Delete`
-- Installed models appear in `Installed Models`
-- Train models from `Training` tab using LoRA/QLoRA jobs (line-based samples + epochs)
-- Completed fine-tune adapters are auto-applied to matching models during chat inference
-- Upload `.json` / `.jsonl` dataset in `Train Loaded Model` to parse and train automatically
+```
+http://127.0.0.1:8000/
+```
 
-Chat from dashboard:
+## Dashboard
 
-- Use `Chat` for multi-turn conversation UI
+| Tab | What you can do |
+|-----|----------------|
+| **Home** | Live metrics — cache hits, batch scheduler stats, throughput pulse |
+| **Chat** | Multi-turn chat with any loaded model |
+| **Download Model** | Search Hugging Face, check device fit, download & manage models |
+| **Train Loaded Model** | Upload `.json` / `.jsonl` dataset → LoRA/QLoRA fine-tune |
+| **Quantize** | Quantize installed models on-device |
+
+**Download flow**
+
+1. Open **Download Model** tab
+2. Search by name, id, or tag
+3. Each result shows machine fit: `Good fit` / `Runs but tight` / `Not suitable`
+4. Click **Download** — track progress in **Download Jobs**
+5. Loaded models appear in **Loaded In Memory**
+6. Remove from memory with **Unload**, remove from disk with **Delete**
+
+**Chat**
+
 - Press `Enter` to send, `Shift+Enter` for newline
-- `Clear` resets local chat history in the browser
-- Runtime chips show `configured model` vs `loaded` status separately
+- `Clear` resets browser chat history
+- Runtime chips show `configured model` vs `loaded` status
 
-Health check:
+**Training**
+
+1. Choose model and profile name
+2. Set epochs (start with 1–2)
+3. Upload `.json` or `.jsonl` dataset
+4. Fine-tuned adapter weights are auto-applied during chat inference
+5. Click **Export** to save the merged model
+
+## API
+
+**Health check**
 
 ```bash
 curl http://127.0.0.1:8000/health
 ```
 
-Chat completion:
+**Chat completion**
 
 ```bash
 curl -s http://127.0.0.1:8000/v1/chat/completions \
   -H 'content-type: application/json' \
   -d '{
-    "model": "qwen2.5-coder:7b",
-    "messages": [{"role": "user", "content": "Write a Python function for Fibonacci."}],
+    "model": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
+    "messages": [{"role": "user", "content": "Write a Python Fibonacci function."}],
     "max_tokens": 128,
     "temperature": 0.2
   }' | jq
 ```
 
-Tool calling (OpenAI-style):
+**Tool calling**
 
 ```bash
 curl -s http://127.0.0.1:8000/v1/chat/completions \
   -H 'content-type: application/json' \
   -d '{
     "model": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
-    "messages": [{"role": "user", "content": "Call get_weather for Bangkok {\"city\":\"Bangkok\"}"}],
-    "tools": [
-      {
-        "type": "function",
-        "function": {
-          "name": "get_weather",
-          "description": "Get weather by city",
-          "parameters": {"type":"object","properties":{"city":{"type":"string"}}}
-        }
+    "messages": [{"role": "user", "content": "What is the weather in Bangkok?"}],
+    "tools": [{
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Get weather by city",
+        "parameters": {"type": "object", "properties": {"city": {"type": "string"}}}
       }
-    ],
+    }],
     "tool_choice": "required"
   }' | jq
 ```
 
-Thinking (reasoning summary) support:
+**Thinking / reasoning**
 
 ```bash
 curl -s http://127.0.0.1:8000/v1/chat/completions \
   -H 'content-type: application/json' \
   -d '{
     "model": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
-    "messages": [{"role":"user","content":"Explain cache layers briefly"}],
+    "messages": [{"role": "user", "content": "Explain cache layers briefly."}],
     "thinking": {"enabled": true, "summary": "auto"},
     "reasoning_effort": "medium"
   }' | jq
 ```
 
-When enabled, response includes:
-- `choices[0].message.thinking`
-- `usage.reasoning_tokens`
+Response includes `choices[0].message.thinking` and `usage.reasoning_tokens`.
 
-## Training Guidelines
-
-Use these guidelines for better training quality, especially with tool-calling workloads:
-
-1. Keep one intent per sample
-- Each line/record should represent a single behavior (for example: "weather query => call `get_weather`").
-
-2. Prefer deterministic phrasing
-- Use stable wording patterns for repeated intents so model behavior is easier to steer.
-
-3. Add explicit tool intent cues
-- Include samples such as "If user asks current weather, call `get_weather` with city JSON."
-- Keep tool name spelling exactly the same as request `tools[].function.name`.
-
-4. Pair intent with argument shape
-- Include examples containing valid JSON snippets matching your tool schema.
-- Example: `{"city":"Bangkok"}` not free-form text.
-
-5. Separate policy from facts
-- Put response style rules (tone, length, safety) in dedicated samples.
-- Put domain facts (product, SOP, business rules) in different samples.
-
-6. Start small, iterate
-- Begin with 20-50 clean samples, train, test on real prompts, then add missing cases.
-
-7. Keep epochs conservative
-- Use `1-2` epochs first; raise only when behavior is still weak.
-
-8. Remember runtime contract
-- Training in this project runs real LoRA/QLoRA fine-tuning jobs and outputs adapter weights.
-- For reliable tool invocation, still send `tools` + `tool_choice` in each chat request.
-
-Cache stats:
+**Cache stats**
 
 ```bash
 curl http://127.0.0.1:8000/v1/cache/stats
 ```
 
-Tune for MacBook throughput:
+## CLI Options
+
+```
+amlx serve [OPTIONS]
+
+  --model TEXT                 Configured model identifier
+  --host TEXT                  Bind host (default: 127.0.0.1)
+  --port INT                   Bind port (default: 8000)
+  --cache-dir PATH             Cache directory (default: ~/.amlx/cache)
+  --models-dir PATH            Model storage directory (default: ~/.amlx/models)
+  --max-memory-cache-items INT In-memory LRU cache capacity (default: 512)
+  --max-batch-size INT         Scheduler batch size (default: 8)
+  --batch-wait-ms INT          Scheduler flush wait in ms (default: 20)
+  --block-chars INT            Paged block size in chars (default: 4096)
+  --gpu-limit-percent INT      GPU duty cycle cap 20–100% (default: 100)
+  --log-level TEXT             Uvicorn log level (default: info)
+```
+
+**Tune for throughput**
 
 ```bash
 amlx serve \
@@ -152,18 +176,31 @@ amlx serve \
   --block-chars 4096
 ```
 
-Custom model storage path:
+**Custom paths**
 
 ```bash
-amlx serve --models-dir ~/.amlx/models
+amlx serve \
+  --models-dir ~/.amlx/models \
+  --model mlx-community/Qwen2.5-Coder-7B-Instruct-4bit
 ```
 
-## Configure MLX model
+## Training Guidelines
 
-Set configured MLX model:
+1. **One intent per sample** — each record should represent a single behavior
+2. **Deterministic phrasing** — stable wording makes model behavior easier to steer
+3. **Explicit tool intent cues** — e.g. `"If user asks weather, call get_weather with {\"city\":\"<city>\"}."`
+4. **Pair intent with argument shape** — include valid JSON matching your tool schema
+5. **Separate policy from facts** — keep response style rules and domain facts in different samples
+6. **Start small** — 20–50 clean samples, train, test, then expand
+7. **Conservative epochs** — start with 1–2; raise only when behavior is still weak
+8. **Runtime contract** — always send `tools` + `tool_choice` in chat requests for reliable tool invocation
 
-```bash
-amlx serve --model mlx-community/Qwen2.5-Coder-7B-Instruct-4bit
+**Dataset format**
+
+```jsonl
+{"text": "If user asks weather in Bangkok, call get_weather with {\"city\":\"Bangkok\"}."}
+{"prompt": "weather question", "response": "call get_weather with city JSON"}
+{"instruction": "forecast intent", "output": "call get_weather_forecast with city and days"}
 ```
 
 ## Roadmap
