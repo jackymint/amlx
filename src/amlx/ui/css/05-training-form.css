@@ -1,0 +1,160 @@
+.train-info-bar {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.train-info-chip {
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.06);
+  color: var(--muted);
+  border: 1px solid rgba(17, 24, 39, 0.1);
+}
+
+.train-box {
+  margin-top: 8px;
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  border-radius: 12px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.train-grid {
+  display: grid;
+  grid-template-columns: 2fr 2fr auto;
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.train-grid-adv {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(17, 24, 39, 0.07);
+}
+
+.train-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.train-field label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.train-field select {
+  width: 100%;
+  font-size: 0.82rem;
+  padding: 6px 8px;
+}
+
+#train-profile-input,
+#quant-output-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1.5px solid rgba(17, 24, 39, 0.18);
+  border-radius: 0;
+  padding: 5px 2px;
+  font-size: 0.88rem;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+#train-profile-input:focus,
+#quant-output-input:focus {
+  border-bottom-color: var(--accent);
+}
+
+#train-profile-input::placeholder,
+#quant-output-input::placeholder {
+  color: rgba(17, 24, 39, 0.28);
+}
+
+.train-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.train-row label {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.train-upload-row {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+#train-file-input {
+  display: none;
+}
+
+
+#train-dataset {
+  margin-top: 12px;
+  min-height: 120px;
+}
+
+.train-actions {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.train-progress {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.train-progress-track {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.1);
+  overflow: hidden;
+}
+
+.train-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #1f2937, #334155);
+  transition: width 180ms ease;
+}
+
+#train-progress-text {
+  min-width: 40px;
+  text-align: right;
+  color: #6b7280;
+  font-size: 0.78rem;
+}
+
+#panel-training .panel {
+  padding: 18px;
+}
+
+#panel-training .hint {
+  margin-top: 10px;
+}
+

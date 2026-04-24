@@ -1,0 +1,124 @@
+.train-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.guide-trigger {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+  font-weight: 700;
+  background: linear-gradient(90deg, #1f2937, #374151);
+  color: #ffffff;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.14);
+}
+
+.guide-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.guide-modal[hidden] {
+  display: none !important;
+}
+
+.guide-modal-card {
+  width: min(900px, 100%);
+  max-height: min(84vh, 900px);
+  overflow: auto;
+  border-radius: 14px;
+  border: 1px solid rgba(17, 24, 39, 0.16);
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0.97), rgba(248, 250, 252, 0.95));
+  padding: 14px;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
+}
+
+.guide-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.guide-modal-head h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #1f2937;
+}
+
+.guide-modal-sub {
+  margin: 8px 0 0;
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
+.train-guide-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.train-sample {
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: 10px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.train-sample h4 {
+  margin: 0 0 6px;
+  font-size: 0.76rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #4b5563;
+}
+
+.train-sample pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.73rem;
+  line-height: 1.35;
+  color: #1f2937;
+  font-family: "SF Mono", "Menlo", "Monaco", "Cascadia Mono", monospace;
+}
+
+#training-models {
+  margin-top: 14px;
+}
+
+#training-models .job {
+  padding: 12px;
+  gap: 8px;
+}
+
+.train-save-card {
+  max-width: 560px;
+}
+
+.train-save-card label {
+  margin-top: 12px;
+  display: block;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+#train-save-path {
+  margin-top: 8px;
+  width: 100%;
+}
+

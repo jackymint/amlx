@@ -99,8 +99,19 @@ class ModelTrainRequest(BaseModel):
     profile: str | None = None
     dataset_text: str | None = None
     samples: list[str] | None = None
-    epochs: int = Field(default=1, ge=1, le=10)
+    epochs: int = Field(default=1, ge=1, le=20)
     fine_tune_type: Literal["lora", "qlora", "dora"] = "qlora"
+    learning_rate: float = Field(default=1e-5, gt=0)
+    lora_rank: int = Field(default=8, ge=4, le=64)
+    lora_layers: int = Field(default=16, ge=1, le=64)
+    max_seq_length: int = Field(default=2048, ge=128, le=8192)
+
+
+class ModelQuantizeRequest(BaseModel):
+    model_id: str
+    output_path: str = Field(min_length=1)
+    q_bits: int = Field(default=4, ge=2, le=8)
+    q_group_size: int = Field(default=64, ge=16, le=256)
 
 
 class ModelTrainSaveRequest(BaseModel):
