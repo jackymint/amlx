@@ -35,10 +35,12 @@ a = Analysis(
 
 pyz = PYZ(a.pure)
 
-# onedir mode: files extracted once at install time, not on every run
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
     [],
     name="amlx",
     debug=False,
@@ -46,14 +48,4 @@ exe = EXE(
     upx=False,
     console=True,
     target_arch="arm64",
-)
-
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=False,
-    name="amlx",
 )
