@@ -172,7 +172,22 @@ class Amlx < Formula
   # ── install ──────────────────────────────────────────────────────────────────
 
   def install
-    virtualenv_install_with_resources
+    venv = virtualenv_create(libexec, "python@3.12")
+
+    # Install pre-built wheels directly (packages that require Rust/binary build)
+    %w[pydantic-core mlx].each do |r|
+      resource(r).stage do
+        venv.pip_install Dir["*.whl"].first
+      end
+    end
+
+    # Install remaining source resources
+    resources.each do |r|
+      next if %w[pydantic-core mlx].include?(r.name)
+      venv.pip_install r
+    end
+
+    venv.pip_install_and_link buildpath
   end
 
   test do
