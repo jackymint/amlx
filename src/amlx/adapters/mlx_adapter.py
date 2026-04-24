@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 
 from amlx.adapters.base import GenerationResult, ModelAdapter
 from amlx.model_type import is_vlm
@@ -12,6 +13,7 @@ class _LoadedModel:
     thread_id: int
     lm: object
     tokenizer: object
+    adapter_path: str | None = None
 
 
 class MLXAdapter(ModelAdapter):
@@ -32,6 +34,7 @@ class MLXAdapter(ModelAdapter):
         self._load = load
         self._mx = mx
         self._loaded: dict[str, _LoadedModel] = {}
+        self._adapter_paths: dict[str, str | None] = {}
         self._gpu_limit_percent = 100
         self._gpu_limit_state: dict[str, object] = {"supported": False}
         self._apply_gpu_limit()
@@ -49,10 +52,23 @@ class MLXAdapter(ModelAdapter):
             return True
         return False
 
+    def set_adapter_path(self, model: str, adapter_path: str | None) -> bool:
+        normalized: str | None = None
+        if adapter_path:
+            p = Path(adapter_path).expanduser()
+            normalized = str(p)
+        current = self._adapter_paths.get(model)
+        self._adapter_paths[model] = normalized
+        changed = current != normalized
+        if changed and model in self._loaded:
+            del self._loaded[model]
+        return changed
+
     def _ensure_loaded_for_current_thread(self, model: str) -> tuple[object, object]:
         current_tid = threading.get_ident()
+        target_adapter = self._adapter_paths.get(model)
         entry = self._loaded.get(model)
-        if entry is not None and entry.thread_id == current_tid:
+        if entry is not None and entry.thread_id == current_tid and entry.adapter_path == target_adapter:
             return entry.lm, entry.tokenizer
 
         if is_vlm(model):
@@ -62,10 +78,17 @@ class MLXAdapter(ModelAdapter):
             )
 
         lm, tokenizer = self._load(model)
+        if target_adapter:
+            try:
+                from mlx_lm import load_adapters  # type: ignore
+            except Exception as exc:
+                raise RuntimeError("Failed to import mlx_lm.load_adapters for LoRA adapters.") from exc
+            load_adapters(lm, target_adapter)
         self._loaded[model] = _LoadedModel(
             thread_id=current_tid,
             lm=lm,
             tokenizer=tokenizer,
+            adapter_path=target_adapter,
         )
         return lm, tokenizer
 

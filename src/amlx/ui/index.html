@@ -10,16 +10,16 @@
     <div class="backdrop"></div>
     <main class="shell">
       <header class="hero">
-        <p class="eyebrow">LOCAL INFERENCE CONTROL</p>
+        <p class="eyebrow">MLX INFERENCE CONTROL</p>
         <h1>AMLX</h1>
-        <p class="subtitle">MacBook-first dashboard for cache, batching, and API throughput.</p>
       </header>
 
       <section class="topbar">
         <section class="workspace-tabs" aria-label="Workspace Tabs" role="tablist">
-          <button id="tab-metrics" class="tab active" type="button" role="tab" aria-selected="true" data-tab="metrics">Metrics</button>
-          <button id="tab-chat" class="tab" type="button" role="tab" aria-selected="false" data-tab="chat">Chat Console</button>
-          <button id="tab-models" class="tab" type="button" role="tab" aria-selected="false" data-tab="models">Model Download Center</button>
+          <button id="tab-metrics" class="tab active" type="button" role="tab" aria-selected="true" data-tab="metrics">HOME</button>
+          <button id="tab-chat" class="tab" type="button" role="tab" aria-selected="false" data-tab="chat">CHAT</button>
+          <button id="tab-models" class="tab" type="button" role="tab" aria-selected="false" data-tab="models">DONWLOAD MODEL</button>
+          <button id="tab-training" class="tab" type="button" role="tab" aria-selected="false" data-tab="training">TRAINING MODEL</button>
         </section>
         <div class="runtime">
           <label class="gpu-limit-control" for="gpu-limit-range">
@@ -27,18 +27,7 @@
             <input id="gpu-limit-range" type="range" min="20" max="100" step="5" value="100" />
             <strong id="gpu-limit-value">100%</strong>
           </label>
-          <label class="gpu-limit-control" for="model-cap-select">
-            <span>model cap</span>
-            <select id="model-cap-select">
-              <option value="0">Unlimited</option>
-              <option value="3">3B</option>
-              <option value="7">7B</option>
-              <option value="14">14B</option>
-              <option value="32">32B</option>
-            </select>
-          </label>
           <button id="cache-clear" type="button" class="ghost mini">Clear Cache</button>
-          <span id="runtime-engine" class="chip">engine: ...</span>
           <span id="runtime-health" class="chip health">status: ...</span>
         </div>
       </section>
@@ -59,7 +48,7 @@
           <p id="misses" class="metric">0</p>
           <div class="split">
             <div><span>misses</span><strong id="misses-small">0</strong></div>
-            <div><span>block writes</span><strong id="block-writes">0</strong></div>
+            <div><span>block</span><strong id="block-writes">0</strong></div>
           </div>
         </article>
 
@@ -99,8 +88,6 @@
 
       <section id="panel-models" class="tab-panel models hidden">
         <div class="panel">
-          <h2>Model Download Center</h2>
-          <p class="hint">Curated MLX-ready models by default. Type in search to query online.</p>
           <div class="search-row">
             <input id="model-search" type="search" placeholder="Search model (name, id, tag)" />
             <span id="model-system" class="system-pill">machine: ...</span>
@@ -112,15 +99,113 @@
             <button id="model-next" type="button" class="ghost">Next</button>
           </div>
         </div>
-        <div class="panel">
-          <h2>Download Jobs</h2>
-          <div id="downloads" class="jobs">No downloads yet.</div>
-          <h2 class="mt">Loaded In Memory</h2>
-          <div id="loaded-models" class="jobs">No loaded models.</div>
-          <h2 class="mt">Installed Models</h2>
-          <div id="installed" class="jobs">No installed models.</div>
+        <div class="panel ops-panel">
+          <section class="ops-block">
+            <h2>Download Jobs</h2>
+            <div id="downloads" class="jobs">
+              <div class="job-empty">
+                <strong>No downloads yet</strong>
+                <span>Downloaded models and progress tasks will appear here.</span>
+              </div>
+            </div>
+          </section>
+          <section class="ops-block">
+            <h2>Loaded In Memory</h2>
+            <div id="loaded-models" class="jobs">
+              <div class="job-empty">
+                <strong>No loaded models</strong>
+                <span>Preload a model to run chat and training instantly.</span>
+              </div>
+            </div>
+          </section>
+          <section class="ops-block">
+            <h2>Installed Models</h2>
+            <div id="installed" class="jobs">
+              <div class="job-empty">
+                <strong>No installed models</strong>
+                <span>Downloaded model folders will be listed here for cleanup.</span>
+              </div>
+            </div>
+          </section>
         </div>
       </section>
+
+      <section id="panel-training" class="tab-panel studio hidden">
+        <div class="panel">
+          <div class="train-header-row">
+            <h2>Train Loaded Model</h2>
+            <button id="train-guide-open" type="button" class="guide-trigger" aria-label="Open training guideline">?</button>
+          </div>
+          <p class="hint">Choose a loaded model, upload dataset (.json/.jsonl), then training starts automatically.</p>
+          <div class="train-box">
+            <div class="train-row">
+              <label for="train-model-select">Model</label>
+              <select id="train-model-select"></select>
+              <label for="train-epochs-select">Epochs</label>
+              <select id="train-epochs-select">
+                <option value="1" selected>1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="5">5</option>
+              </select>
+            </div>
+            <div class="train-upload-row">
+              <input id="train-file-input" type="file" accept=".json,.jsonl,application/json,application/x-ndjson" />
+              <p>
+              <button id="train-upload-btn" type="button" class="ghost mini">Upload .json/.jsonl</button>
+              </p>
+              <span id="train-file-meta" class="meta">No file selected.</span>
+            </div>
+            <textarea id="train-dataset" rows="4" placeholder="One line = one training sample"></textarea>
+            <div class="train-actions">
+              <button id="train-submit" type="button">RUN</button>
+              <span id="train-status" class="chip" style="display:none;"></span>
+            </div>
+            <div id="train-progress-wrap" class="train-progress" style="display:none;">
+              <div class="train-progress-track">
+                <div id="train-progress-fill" class="train-progress-fill" style="width:0%;"></div>
+              </div>
+              <span id="train-progress-text">0%</span>
+            </div>
+            <div id="training-models" class="jobs">
+              <div class="job-empty">
+                <strong>No training history</strong>
+                <span>After training, summaries for each model will show up here.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div id="train-guide-modal" class="guide-modal" role="dialog" aria-modal="true" aria-labelledby="train-guide-title" hidden>
+        <div class="guide-modal-card">
+          <div class="guide-modal-head">
+            <h3 id="train-guide-title">Training Guideline</h3>
+            <button id="train-guide-close" type="button" class="ghost mini">Close</button>
+          </div>
+          <p class="guide-modal-sub">Use one intent per sample, keep tool names exact, and include valid JSON arguments.</p>
+          <div class="train-guide-grid">
+            <article class="train-sample">
+              <h4>Text (line-based)</h4>
+              <pre>When user asks weather, call get_weather with {"city":"Bangkok"}
+Keep answer concise in Thai
+If missing city, ask follow-up first</pre>
+            </article>
+            <article class="train-sample">
+              <h4>JSON</h4>
+              <pre>[
+  {"instruction":"weather intent","output":"call get_weather with city json"},
+  {"prompt":"hours question","response":"answer with business hours"}
+]</pre>
+            </article>
+            <article class="train-sample">
+              <h4>JSONL</h4>
+              <pre>{"text":"use tool search_docs for policy lookup"}
+{"prompt":"find invoice","response":"call find_invoice with {\"id\":\"INV-001\"}"}</pre>
+            </article>
+          </div>
+        </div>
+      </div>
     </main>
     <script src="/assets/app.js" defer></script>
   </body>

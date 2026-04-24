@@ -6,7 +6,6 @@ import typer
 import uvicorn
 
 from amlx import __version__
-from amlx.adapters.echo import EchoAdapter
 from amlx.adapters.mlx_adapter import MLXAdapter
 from amlx.api.app import create_app
 from amlx.cache.blocks import PagedBlockStore
@@ -35,7 +34,6 @@ def serve(
     max_batch_size: int = typer.Option(8, help="Maximum scheduler batch size"),
     batch_wait_ms: int = typer.Option(20, help="Scheduler max wait before flush (ms)"),
     block_chars: int = typer.Option(4096, help="Paged block size in UTF-8 characters"),
-    engine: str = typer.Option("echo", help="Runtime engine: echo or mlx"),
     gpu_limit_percent: int = typer.Option(100, min=20, max=100, help="Cap average GPU duty cycle to reduce heat"),
     log_level: str = typer.Option("info", help="Uvicorn log level"),
 ) -> None:
@@ -53,10 +51,7 @@ def serve(
     )
     cfg.ensure_dirs()
 
-    if engine == "mlx":
-        adapter = MLXAdapter()
-    else:
-        adapter = EchoAdapter()
+    adapter = MLXAdapter()
 
     adapter.set_gpu_limit_percent(gpu_limit_percent)
 
@@ -80,12 +75,11 @@ def serve(
     web_app = create_app(
         service,
         default_model=cfg.model,
-        engine=engine,
         model_manager=model_manager,
     )
 
     configured = cfg.model if cfg.model else "(none)"
-    typer.echo(f"Starting amlx on http://{cfg.host}:{cfg.port} with configured_model={configured} engine={engine}")
+    typer.echo(f"Starting amlx on http://{cfg.host}:{cfg.port} with configured_model={configured}")
     uvicorn.run(
         web_app,
         host=cfg.host,

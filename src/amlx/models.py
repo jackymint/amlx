@@ -18,6 +18,7 @@ from amlx.model_type import is_vlm
 CatalogItem = dict[str, Any]
 Downloader = Callable[[str, Path], Path]
 SearchProvider = Callable[[str, int], list[dict[str, Any]]]
+FineTuner = Callable[[Any, Any], None]
 
 
 CATALOG: list[CatalogItem] = [
@@ -78,6 +79,24 @@ class DownloadTask:
     error: str | None = None
 
 
+@dataclass(slots=True)
+class FineTuneTask:
+    task_id: str
+    model_id: str
+    effective_model: str
+    status: str
+    progress: int
+    message: str
+    fine_tune_type: str
+    epochs: int
+    train_samples: int
+    started_at: float
+    updated_at: float
+    finished_at: float | None = None
+    adapter_path: str | None = None
+    error: str | None = None
+
+
 class ModelManager:
     def __init__(
         self,
@@ -85,13 +104,16 @@ class ModelManager:
         models_dir: Path,
         downloader: Downloader | None = None,
         search_provider: SearchProvider | None = None,
+        fine_tuner: FineTuner | None = None,
     ) -> None:
         self.models_dir = models_dir
         self.models_dir.mkdir(parents=True, exist_ok=True)
         self._tasks: dict[str, DownloadTask] = {}
+        self._finetune_tasks: dict[str, FineTuneTask] = {}
         self._lock = threading.Lock()
         self._downloader = downloader or self._default_downloader
         self._search_provider = search_provider or self._default_search_provider
+        self._fine_tuner = fine_tuner or self._default_fine_tuner
 
     def system_profile(self) -> dict[str, Any]:
         machine = platform.machine().lower()
@@ -116,6 +138,7 @@ class ModelManager:
         for item in CATALOG:
             enriched = dict(item)
             enriched["compatibility"] = self._compatibility(item, profile)
+            enriched["capabilities"] = self._capabilities(enriched)
             enriched_all.append(enriched)
         total = len(enriched_all)
         start = (page - 1) * per_page
@@ -149,8 +172,44 @@ class ModelManager:
                 "source": "online",
             }
             enriched["compatibility"] = self._compatibility(enriched, profile)
+            enriched["capabilities"] = self._capabilities(enriched)
             items.append(enriched)
         return items, total
+
+    @staticmethod
+    def _capabilities(item: CatalogItem) -> dict[str, bool]:
+        ident = str(item.get("id", "")).lower()
+        tags = str(item.get("tags", "")).lower()
+        text = f"{ident} {tags}"
+
+        vision_tokens = ("vlm", "vision", "multimodal", "llava", "qwen-vl", "gemma-vision")
+        thinking_tokens = ("reasoning", "r1", "think", "thinking", "o1", "o3", "deepseek-r1")
+        tool_tokens = ("instruct", "chat", "assistant", "function", "tool", "agent", "coder")
+        coding_tokens = ("coder", "coding", "code", "dev", "programming")
+        embedding_tokens = ("embedding", "embed")
+        rerank_tokens = ("rerank", "reranker")
+        audio_tokens = ("audio", "asr", "whisper", "speech", "tts", "stt", "voice")
+        speech_tokens = ("speech", "tts", "stt", "voice", "asr", "whisper")
+
+        vision = any(token in text for token in vision_tokens) or is_vlm(ident)
+        thinking = any(token in text for token in thinking_tokens)
+        tool = any(token in text for token in tool_tokens) and not vision
+        coding = any(token in text for token in coding_tokens) and not vision
+        embedding = any(token in text for token in embedding_tokens)
+        rerank = any(token in text for token in rerank_tokens)
+        audio = any(token in text for token in audio_tokens)
+        speech = any(token in text for token in speech_tokens)
+
+        return {
+            "tool": bool(tool),
+            "vision": bool(vision),
+            "thinking": bool(thinking),
+            "coding": bool(coding),
+            "embedding": bool(embedding),
+            "rerank": bool(rerank),
+            "audio": bool(audio),
+            "speech": bool(speech),
+        }
 
     def installed_models(self) -> list[dict[str, str]]:
         items: list[dict[str, str]] = []
@@ -202,6 +261,46 @@ class ModelManager:
             tasks = sorted(self._tasks.values(), key=lambda x: x.started_at, reverse=True)
             return [asdict(t) for t in tasks]
 
+    def list_finetune_tasks(self) -> list[dict[str, str | int | float | None]]:
+        with self._lock:
+            tasks = sorted(self._finetune_tasks.values(), key=lambda x: x.started_at, reverse=True)
+            return [asdict(t) for t in tasks]
+
+    def get_finetune_task(self, task_id: str) -> dict[str, str | int | float | None] | None:
+        with self._lock:
+            task = self._finetune_tasks.get(task_id)
+            if task is None:
+                return None
+            return asdict(task)
+
+    def latest_completed_adapter(
+        self,
+        *,
+        model_id: str | None = None,
+        effective_model: str | None = None,
+    ) -> str | None:
+        with self._lock:
+            best: FineTuneTask | None = None
+            for task in self._finetune_tasks.values():
+                if task.status != "completed":
+                    continue
+                if not task.adapter_path:
+                    continue
+                if model_id and task.model_id == model_id:
+                    pass
+                elif effective_model and task.effective_model == effective_model:
+                    pass
+                else:
+                    continue
+                if best is None:
+                    best = task
+                    continue
+                best_ts = float(best.finished_at or best.updated_at or 0)
+                task_ts = float(task.finished_at or task.updated_at or 0)
+                if task_ts >= best_ts:
+                    best = task
+            return best.adapter_path if best is not None else None
+
     def get_task(self, task_id: str) -> dict[str, str | int | float | None] | None:
         with self._lock:
             task = self._tasks.get(task_id)
@@ -236,10 +335,59 @@ class ModelManager:
         thread.start()
         return asdict(task)
 
+    def enqueue_finetune(
+        self,
+        *,
+        model_id: str,
+        effective_model: str,
+        samples: list[str],
+        epochs: int,
+        fine_tune_type: str = "qlora",
+    ) -> dict[str, str | int | float | None]:
+        clean = [s.strip() for s in samples if s and s.strip()]
+        if not clean:
+            raise ValueError("Training data is empty.")
+
+        existing = self._active_finetune_task_for_model(model_id)
+        if existing is not None:
+            return asdict(existing)
+
+        now = time()
+        task = FineTuneTask(
+            task_id=f"ft_{uuid.uuid4().hex[:18]}",
+            model_id=model_id,
+            effective_model=effective_model,
+            status="queued",
+            progress=0,
+            message="Queued",
+            fine_tune_type=fine_tune_type,
+            epochs=max(1, int(epochs)),
+            train_samples=len(clean),
+            started_at=now,
+            updated_at=now,
+        )
+        with self._lock:
+            self._finetune_tasks[task.task_id] = task
+
+        worker = threading.Thread(
+            target=self._run_finetune,
+            args=(task.task_id, clean),
+            daemon=True,
+        )
+        worker.start()
+        return asdict(task)
+
     def _active_task_for_model(self, model_id: str) -> DownloadTask | None:
         with self._lock:
             for task in self._tasks.values():
                 if task.model_id == model_id and task.status in {"queued", "downloading"}:
+                    return task
+        return None
+
+    def _active_finetune_task_for_model(self, model_id: str) -> FineTuneTask | None:
+        with self._lock:
+            for task in self._finetune_tasks.values():
+                if task.model_id == model_id and task.status in {"queued", "running"}:
                     return task
         return None
 
@@ -325,6 +473,106 @@ class ModelManager:
                 finished_at=time(),
             )
 
+    def _run_finetune(self, task_id: str, samples: list[str]) -> None:
+        self._update_finetune(task_id, status="running", progress=1, message="Preparing dataset")
+        task = self.get_finetune_task(task_id)
+        if task is None:
+            return
+
+        run_root = self.models_dir / ".finetunes" / str(task_id)
+        data_dir = run_root / "data"
+        adapter_dir = run_root / "adapters"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        adapter_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            train_rows = [{"text": row} for row in samples]
+            with (data_dir / "train.jsonl").open("w", encoding="utf-8") as f:
+                for row in train_rows:
+                    f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+            iters = max(20, int(task["epochs"]) * max(10, len(samples)))
+            steps_per_report = max(1, min(20, iters // 20))
+            save_every = max(20, iters // 5)
+            fine_type = str(task["fine_tune_type"]).lower()
+            mlx_fine_type = "lora" if fine_type in {"lora", "qlora"} else "dora"
+
+            import argparse
+            from mlx_lm import lora as mlx_lora  # type: ignore
+            from mlx_lm.tuner.callbacks import TrainingCallback  # type: ignore
+
+            class _ProgressCallback(TrainingCallback):
+                def __init__(self, update_fn: Callable[[int, str], None], total_iters: int):
+                    self._update_fn = update_fn
+                    self._total_iters = max(1, total_iters)
+
+                def on_train_loss_report(self, train_info: dict):
+                    it = int(train_info.get("iteration", 0))
+                    pct = max(1, min(99, int((it / self._total_iters) * 100)))
+                    loss = train_info.get("train_loss")
+                    msg = f"Training (iter {it}/{self._total_iters})"
+                    if isinstance(loss, (int, float)):
+                        msg = f"{msg} • loss {loss:.4f}"
+                    self._update_fn(pct, msg)
+
+                def on_val_loss_report(self, val_info: dict):
+                    loss = val_info.get("val_loss")
+                    if isinstance(loss, (int, float)):
+                        self._update_fn(99, f"Validation • loss {loss:.4f}")
+
+            config = dict(mlx_lora.CONFIG_DEFAULTS)
+            config.update(
+                {
+                    "model": str(task["effective_model"]),
+                    "train": True,
+                    "test": False,
+                    "data": str(data_dir),
+                    "fine_tune_type": mlx_fine_type,
+                    "optimizer": "adamw",
+                    "batch_size": 1,
+                    "iters": iters,
+                    "val_batches": 1,
+                    "learning_rate": 1e-5,
+                    "steps_per_report": steps_per_report,
+                    "steps_per_eval": max(iters + 1, 5000),
+                    "grad_accumulation_steps": 1,
+                    "resume_adapter_file": None,
+                    "adapter_path": str(adapter_dir),
+                    "save_every": save_every,
+                    "max_seq_length": 2048,
+                    "grad_checkpoint": False,
+                    "clear_cache_threshold": 0,
+                    "report_to": None,
+                    "project_name": None,
+                    "seed": 0,
+                }
+            )
+            args = argparse.Namespace(**config)
+
+            callback = _ProgressCallback(
+                lambda pct, msg: self._update_finetune(task_id, progress=pct, message=msg),
+                total_iters=iters,
+            )
+
+            self._fine_tuner(args, callback)
+            self._update_finetune(
+                task_id,
+                status="completed",
+                progress=100,
+                message="Fine-tune completed",
+                adapter_path=str(adapter_dir),
+                finished_at=time(),
+            )
+        except Exception as exc:
+            self._update_finetune(
+                task_id,
+                status="failed",
+                progress=100,
+                message="Fine-tune failed",
+                error=str(exc),
+                finished_at=time(),
+            )
+
     def _update(self, task_id: str, **updates: str | int | float | None) -> None:
         with self._lock:
             task = self._tasks.get(task_id)
@@ -335,9 +583,25 @@ class ModelManager:
                     setattr(task, key, value)  # type: ignore[arg-type]
             task.updated_at = time()
 
+    def _update_finetune(self, task_id: str, **updates: str | int | float | None) -> None:
+        with self._lock:
+            task = self._finetune_tasks.get(task_id)
+            if task is None:
+                return
+            for key, value in updates.items():
+                if hasattr(task, key):
+                    setattr(task, key, value)  # type: ignore[arg-type]
+            task.updated_at = time()
+
     @staticmethod
     def _model_path(model_id: str) -> Path:
         return Path(model_id.replace("/", "--"))
+
+    @staticmethod
+    def _default_fine_tuner(args: Any, callback: Any) -> None:
+        from mlx_lm import lora as mlx_lora  # type: ignore
+
+        mlx_lora.run(args, training_callback=callback)
 
     def _default_downloader(self, model_id: str, target_dir: Path) -> Path:
         try:
@@ -354,7 +618,6 @@ class ModelManager:
         snapshot_download(
             repo_id=model_id,
             local_dir=str(local_dir),
-            local_dir_use_symlinks=False,
             resume_download=True,
         )
         return local_dir

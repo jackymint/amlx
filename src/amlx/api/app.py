@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from importlib.resources import files
-import re
-import threading
 
 from fastapi import FastAPI
 from fastapi import HTTPException
@@ -11,7 +9,13 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from amlx.models import ModelManager
-from amlx.schemas import ChatCompletionsRequest, ChatCompletionsResponse, ModelDownloadRequest, RuntimePowerRequest
+from amlx.schemas import (
+    ChatCompletionsRequest,
+    ChatCompletionsResponse,
+    ModelDownloadRequest,
+    ModelTrainRequest,
+    RuntimePowerRequest,
+)
 from amlx.service import InferenceService
 
 
@@ -19,44 +23,8 @@ def create_app(
     service: InferenceService,
     *,
     default_model: str | None = None,
-    engine: str = "echo",
     model_manager: ModelManager | None = None,
 ) -> FastAPI:
-    runtime_limits = {"max_model_b": 0.0}
-    runtime_limits_lock = threading.Lock()
-
-    def get_max_model_b() -> float:
-        with runtime_limits_lock:
-            return float(runtime_limits["max_model_b"])
-
-    def set_max_model_b(value: float | None) -> float:
-        with runtime_limits_lock:
-            runtime_limits["max_model_b"] = max(0.0, float(value or 0.0))
-            return float(runtime_limits["max_model_b"])
-
-    def estimate_model_b(model_ref: str) -> float | None:
-        match = re.search(r"(\d+(?:\.\d+)?)b", str(model_ref).lower())
-        if not match:
-            return None
-        try:
-            return float(match.group(1))
-        except Exception:
-            return None
-
-    def enforce_model_limit(model_ref: str) -> None:
-        max_b = get_max_model_b()
-        if max_b <= 0:
-            return
-        display_ref = display_model_ref(model_ref)
-        estimated = estimate_model_b(display_ref)
-        if estimated is None:
-            return
-        if estimated > max_b:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Model is limited to <= {max_b:g}B. Selected model is ~{estimated:g}B ({display_ref}).",
-            )
-
     def resolve_model_ref(model_ref: str) -> str:
         if model_manager is None:
             return model_ref
@@ -108,21 +76,18 @@ def create_app(
     def runtime() -> dict[str, object]:
         loaded = [display_model_ref(m) for m in service.adapter.loaded_models()]
         return {
-            "engine": engine,
             "default_model": default_model,
             "configured_model": default_model,
             "loaded_models": loaded,
             "loaded_default_model": service.adapter.is_model_loaded(default_model) if default_model else False,
             "gpu_limit_percent": service.scheduler.gpu_limit_percent(),
             "gpu_limit_adapter": adapter_gpu_limit_state(),
-            "max_model_b": get_max_model_b(),
         }
 
     @app.get("/v1/runtime/power")
     def runtime_power() -> dict[str, object]:
         return {
             "gpu_limit_percent": service.scheduler.gpu_limit_percent(),
-            "max_model_b": get_max_model_b(),
             "gpu_limit_adapter": adapter_gpu_limit_state(),
         }
 
@@ -132,12 +97,8 @@ def create_app(
         if req.gpu_limit_percent is not None:
             current_gpu = service.scheduler.set_gpu_limit_percent(req.gpu_limit_percent)
             service.adapter.set_gpu_limit_percent(current_gpu)
-        max_model_b = get_max_model_b()
-        if req.max_model_b is not None:
-            max_model_b = set_max_model_b(req.max_model_b)
         return {
             "gpu_limit_percent": current_gpu,
-            "max_model_b": max_model_b,
             "gpu_limit_adapter": adapter_gpu_limit_state(),
         }
 
@@ -188,7 +149,6 @@ def create_app(
     def models_download(req: ModelDownloadRequest) -> dict[str, str | int | float | None]:
         if model_manager is None:
             raise HTTPException(status_code=404, detail="Model manager unavailable")
-        enforce_model_limit(req.model_id)
         try:
             return model_manager.enqueue_download(req.model_id)
         except ValueError as exc:
@@ -198,7 +158,6 @@ def create_app(
     def models_preload(req: ModelDownloadRequest) -> dict[str, object]:
         try:
             effective_model = resolve_model_ref(req.model_id)
-            enforce_model_limit(effective_model)
             loaded = service.preload_model(effective_model)
             return {
                 "ok": True,
@@ -222,6 +181,38 @@ def create_app(
                 "effective_model": effective_model,
                 "loaded_models": [display_model_ref(m) for m in service.adapter.loaded_models()],
             }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/v1/models/training")
+    def models_training() -> dict[str, list[dict[str, object]]]:
+        if model_manager is None:
+            return {"tasks": []}
+        tasks = model_manager.list_finetune_tasks()
+        out = []
+        for task in tasks:
+            row = dict(task)
+            row["model_id"] = display_model_ref(str(task.get("model_id", "")))
+            out.append(row)
+        return {"tasks": out}
+
+    @app.post("/v1/models/train")
+    def models_train(req: ModelTrainRequest) -> dict[str, object]:
+        if model_manager is None:
+            raise HTTPException(status_code=404, detail="Model manager unavailable")
+        try:
+            effective_model = resolve_model_ref(req.model_id)
+            raw = list(req.samples or [])
+            if req.dataset_text:
+                raw.extend(line.strip() for line in req.dataset_text.splitlines() if line.strip())
+            task = model_manager.enqueue_finetune(
+                model_id=req.model_id,
+                effective_model=effective_model,
+                samples=raw,
+                epochs=req.epochs,
+                fine_tune_type=req.fine_tune_type,
+            )
+            return {"ok": True, **task}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -266,7 +257,12 @@ def create_app(
     def chat_completions(req: ChatCompletionsRequest) -> ChatCompletionsResponse:
         try:
             effective_model = resolve_model_ref(req.model)
-            enforce_model_limit(effective_model)
+            if model_manager is not None:
+                adapter_path = model_manager.latest_completed_adapter(
+                    model_id=req.model,
+                    effective_model=effective_model,
+                )
+                service.adapter.set_adapter_path(effective_model, adapter_path)
             if effective_model != req.model:
                 req = req.model_copy(update={"model": effective_model})
             return service.complete(req)
