@@ -8,6 +8,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -29,9 +32,12 @@ jobs:
           echo "tarball_url=${TARBALL_URL}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes
 
       - name: Compute tarball SHA256
         id: sha
@@ -55,37 +61,7 @@ jobs:
           VERSION: ${{ needs.release.outputs.version }}
           SHA256: ${{ needs.release.outputs.sha256 }}
           TARBALL_URL: ${{ needs.release.outputs.tarball_url }}
-        run: |
-          python3 - <<'EOF'
-          import os, re
-
-          formula_path = "Formula/amlx.rb"
-          url     = os.environ["TARBALL_URL"]
-          sha256  = os.environ["SHA256"]
-
-          with open(formula_path) as f:
-              text = f.read()
-
-          # Replace tarball url line
-          text = re.sub(
-              r'(  url "https://github\.com/[^/]+/amlx/archive/refs/tags/v)[^"]*(")',
-              lambda m: f'  url "{url}"',
-              text,
-          )
-
-          # Replace the sha256 that immediately follows the tarball url
-          text = re.sub(
-              r'(  url "https://github\.com/[^"]+\.tar\.gz"\n  sha256 )"[^"]*"',
-              rf'\1"{sha256}"',
-              text,
-          )
-
-          with open(formula_path, "w") as f:
-              f.write(text)
-
-          print(f"Updated formula → {url}")
-          print(f"sha256 → {sha256}")
-          EOF
+        run: python3 .github/scripts/update_formula.py
 
       - name: Commit updated formula
         run: |
