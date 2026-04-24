@@ -91,7 +91,7 @@ def test_ui_root_and_runtime() -> None:
     client = build_client()
     root = client.get("/")
     assert root.status_code == 200
-    assert "amlx Control Room" in root.text
+    assert "AMLX INFERENCE CONTROL" in root.text
 
     runtime = client.get("/v1/runtime")
     assert runtime.status_code == 200
