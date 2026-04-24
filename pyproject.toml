@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "amlx"
-version = "1.0.3"
+version = "1.0.4"
 description = "MacBook-first local AI inference server with OpenAI-compatible API"
 readme = "README.md"
 requires-python = ">=3.10"

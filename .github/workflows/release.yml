@@ -79,7 +79,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
-          token: ${{ secrets.ADMIN_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update Formula/amlx.rb
         env:
