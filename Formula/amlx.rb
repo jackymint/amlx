@@ -77,8 +77,8 @@ class Amlx < Formula
   end
 
   resource "pydantic-core" do
-    url "https://files.pythonhosted.org/packages/17/19/ed6a078a5287aea7922de6841ef4c06157931622c89c2a47940837b5eecd/pydantic_core-2.33.1.tar.gz"
-    sha256 "bcc9c6fdb0ced789245b02b7d6603e17d1563064ddcfc36f046b61c0c05dd9df"
+    url "https://files.pythonhosted.org/packages/19/78/f381d643b12378fee782a72126ec5d793081ef03791c28a0fd542a5bee64/pydantic_core-2.33.1-cp312-cp312-macosx_11_0_arm64.whl"
+    sha256 "99b56acd433386c8f20be5c4000786d1e7ca0523c8eefc995d14d79c7a081498"
   end
 
   resource "python-dotenv" do
