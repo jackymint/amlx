@@ -13,6 +13,7 @@ from amlx.schemas import (
     ChatCompletionsRequest,
     ChatCompletionsResponse,
     ModelDownloadRequest,
+    ModelTrainSaveRequest,
     ModelTrainRequest,
     RuntimePowerRequest,
 )
@@ -208,9 +209,26 @@ def create_app(
             task = model_manager.enqueue_finetune(
                 model_id=req.model_id,
                 effective_model=effective_model,
+                profile=req.profile,
                 samples=raw,
                 epochs=req.epochs,
                 fine_tune_type=req.fine_tune_type,
+            )
+            return {"ok": True, **task}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/v1/models/train/save")
+    def models_train_save(req: ModelTrainSaveRequest) -> dict[str, object]:
+        if model_manager is None:
+            raise HTTPException(status_code=404, detail="Model manager unavailable")
+        try:
+            task = model_manager.save_merged_finetune(
+                task_id=req.task_id,
+                profile=req.profile,
+                adapter_path=req.adapter_path,
+                effective_model=req.effective_model,
+                output_path=req.output_path,
             )
             return {"ok": True, **task}
         except Exception as exc:

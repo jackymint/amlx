@@ -114,3 +114,17 @@ class PagedBlockStore:
             out.append(path.read_text(encoding="utf-8"))
 
         return "".join(out)
+
+    def clear(self) -> None:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT rel_path FROM block_refs").fetchall()
+            conn.execute("DELETE FROM manifests")
+            conn.execute("DELETE FROM block_refs")
+
+        for (rel_path,) in rows:
+            try:
+                path = self.root_dir / str(rel_path)
+                if path.exists():
+                    path.unlink()
+            except Exception:
+                continue

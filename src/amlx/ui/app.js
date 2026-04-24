@@ -18,6 +18,7 @@ const state = {
   trainingModels: [],
   selectedChatModel: "",
   selectedTrainModel: "",
+  selectedTrainProfile: "customer-support-v1",
   uploadedTrainSamples: [],
   uploadedTrainFileName: "",
   chatModelLoading: false,
@@ -28,6 +29,10 @@ const state = {
   gpuLimitPercent: 100,
   gpuLimitSaving: false,
   gpuLimitAdapter: null,
+  saveTrainTaskId: "",
+  saveTrainProfile: "",
+  saveTrainRunning: false,
+  saveTrainStatus: "",
 };
 
 let trainProgressTimer = null;
@@ -220,6 +225,61 @@ function setTrainGuideModalOpen(open) {
   const modal = el("train-guide-modal");
   if (!(modal instanceof HTMLDivElement)) return;
   modal.hidden = !open;
+}
+
+function setTrainSaveModalOpen(open) {
+  const modal = el("train-save-modal");
+  if (!(modal instanceof HTMLDivElement)) return;
+  if (!open) {
+    state.saveTrainTaskId = "";
+    state.saveTrainProfile = "";
+    state.saveTrainStatus = "";
+    state.saveTrainRunning = false;
+  }
+  modal.hidden = !open;
+  renderTrainSaveModal();
+}
+
+function renderTrainSaveModal() {
+  const status = el("train-save-status");
+  const confirm = el("train-save-confirm");
+  const input = el("train-save-path");
+  if (status) {
+    status.textContent = state.saveTrainStatus || "";
+    status.style.display = state.saveTrainStatus ? "inline-flex" : "none";
+  }
+  if (confirm instanceof HTMLButtonElement) {
+    confirm.disabled = state.saveTrainRunning;
+    confirm.textContent = state.saveTrainRunning ? "Saving..." : "Save";
+  }
+  if (input instanceof HTMLInputElement) {
+    input.disabled = state.saveTrainRunning;
+  }
+}
+
+function defaultSavePathForTask(task) {
+  const profile = String(task?.profile || state.selectedTrainProfile || "profile");
+  const slug = String(profile || "profile")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+  return `./exports/${slug || "profile"}-merged`;
+}
+
+function openTrainSaveModal(taskId, profileHint = "") {
+  const task = state.trainingModels.find((item) => item.task_id === taskId);
+  if (!task || task.status !== "completed") return;
+  state.saveTrainTaskId = taskId;
+  state.saveTrainProfile = String(task.profile || profileHint || "");
+  state.saveTrainStatus = "";
+  state.saveTrainRunning = false;
+  const subtitle = el("train-save-subtitle");
+  const input = el("train-save-path");
+  if (subtitle) subtitle.textContent = `Save merged model for profile ${state.saveTrainProfile || "profile"}`;
+  if (input instanceof HTMLInputElement) {
+    input.value = defaultSavePathForTask(task);
+  }
+  setTrainSaveModalOpen(true);
 }
 
 function setActiveTab(tab) {
@@ -469,6 +529,7 @@ function renderTrainModelSelect() {
   const button = el("train-submit");
   const uploadBtn = el("train-upload-btn");
   const epochsSelect = el("train-epochs-select");
+  const profileInput = el("train-profile-input");
   const datasetInput = el("train-dataset");
   const fileMeta = el("train-file-meta");
   const status = el("train-status");
@@ -495,6 +556,7 @@ function renderTrainModelSelect() {
     if (button instanceof HTMLButtonElement) button.disabled = true;
     if (uploadBtn instanceof HTMLButtonElement) uploadBtn.disabled = true;
     if (epochsSelect instanceof HTMLSelectElement) epochsSelect.disabled = true;
+    if (profileInput instanceof HTMLInputElement) profileInput.disabled = true;
     if (datasetInput instanceof HTMLTextAreaElement) datasetInput.disabled = true;
   } else {
     if (!options.some((x) => x.id === state.selectedTrainModel)) {
@@ -510,7 +572,13 @@ function renderTrainModelSelect() {
     if (button instanceof HTMLButtonElement) button.disabled = state.trainRunning;
     if (uploadBtn instanceof HTMLButtonElement) uploadBtn.disabled = state.trainRunning;
     if (epochsSelect instanceof HTMLSelectElement) epochsSelect.disabled = state.trainRunning;
+    if (profileInput instanceof HTMLInputElement) profileInput.disabled = state.trainRunning;
     if (datasetInput instanceof HTMLTextAreaElement) datasetInput.disabled = state.trainRunning;
+  }
+
+  if (profileInput instanceof HTMLInputElement) {
+    if (!state.selectedTrainProfile) state.selectedTrainProfile = "customer-support-v1";
+    profileInput.value = state.selectedTrainProfile;
   }
 
   if (status) {
@@ -542,12 +610,22 @@ function renderTrainingModels() {
       const dateLabel = Number.isFinite(updated.getTime()) ? updated.toLocaleString() : "unknown";
       const progress = Math.max(0, Math.min(100, Number(item.progress || 0)));
       const stateText = `${item.status || "unknown"} • ${progress}%`;
+      const profile = item.profile || "legacy-profile";
+      const canSave = item.status === "completed" && item.adapter_path;
+      const savingThisTask = state.saveTrainRunning && state.saveTrainTaskId === item.task_id;
       return `
         <div class="job">
-          <strong>${item.model_id || item.effective_model}</strong>
-          <span>${stateText} • type: ${item.fine_tune_type || "qlora"} • samples: ${item.train_samples || 0}</span>
+          <strong>${profile}</strong>
+          <span>${stateText} • model: ${item.model_id || item.effective_model} • round: ${item.round || 1}</span>
+          <span>type: ${item.fine_tune_type || "qlora"} • samples: ${item.train_samples || 0}</span>
           <div class="progress-track"><div class="progress-fill" style="width:${progress}%"></div></div>
           <span>${item.message || ""}${item.error ? ` • ${item.error}` : ""} • updated: ${dateLabel}</span>
+          ${
+            canSave
+              ? `<div class="job-actions"><button type="button" class="ghost mini" data-action="save-merged-train" data-task-id="${item.task_id}" data-profile="${profile}" ${savingThisTask ? "disabled" : ""}>${savingThisTask ? "Saving..." : "Save"}</button></div>`
+              : ""
+          }
+          ${item.merged_path ? `<span>saved: ${item.merged_path}</span>` : ""}
         </div>
       `;
     })
@@ -887,6 +965,7 @@ async function handleTrainFileUpload(file) {
 
 async function requestTrain(options = {}) {
   const modelId = state.selectedTrainModel || "";
+  const profile = String(state.selectedTrainProfile || "").trim();
   const input = el("train-dataset");
   const epochSelect = el("train-epochs-select");
   const dataset = input instanceof HTMLTextAreaElement ? input.value : "";
@@ -906,6 +985,11 @@ async function requestTrain(options = {}) {
     renderTrainModelSelect();
     return;
   }
+  if (!profile) {
+    state.trainStatus = "profile is required";
+    renderTrainModelSelect();
+    return;
+  }
   if (!samples.length) {
     state.trainStatus = "training data is empty";
     renderTrainModelSelect();
@@ -914,20 +998,20 @@ async function requestTrain(options = {}) {
 
   state.trainRunning = true;
   state.trainProgress = 1;
-  state.trainStatus = `training ${modelId}...`;
+  state.trainStatus = `training profile ${profile}...`;
   renderTrainModelSelect();
   beginTrainProgress();
   try {
     const created = await fetchJson("/v1/models/train", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ model_id: modelId, samples, epochs, fine_tune_type: "qlora" }),
+      body: JSON.stringify({ model_id: modelId, profile, samples, epochs, fine_tune_type: "qlora" }),
     });
     const taskId = created?.task_id;
     if (!taskId) {
       throw new Error("missing train task id");
     }
-    state.trainStatus = `queued ${taskId}`;
+    state.trainStatus = `queued profile ${profile}`;
     renderTrainModelSelect();
 
     while (true) {
@@ -962,6 +1046,47 @@ async function requestTrain(options = {}) {
     state.trainRunning = false;
     completeTrainProgress();
     renderTrainModelSelect();
+  }
+}
+
+async function requestSaveMergedTrain() {
+  const taskId = state.saveTrainTaskId;
+  const profile = String(state.saveTrainProfile || state.selectedTrainProfile || "").trim();
+  const input = el("train-save-path");
+  const outputPath = input instanceof HTMLInputElement ? String(input.value || "").trim() : "";
+  if (!profile && !taskId) {
+    state.saveTrainStatus = "missing profile";
+    renderTrainSaveModal();
+    return;
+  }
+  if (!outputPath) {
+    state.saveTrainStatus = "output path is required";
+    renderTrainSaveModal();
+    return;
+  }
+  state.saveTrainRunning = true;
+  state.saveTrainStatus = "saving merged model...";
+  renderTrainingModels();
+  renderTrainSaveModal();
+  try {
+    const body = await fetchJson("/v1/models/train/save", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ task_id: null, profile: profile || null, output_path: outputPath }),
+    });
+    state.saveTrainStatus = `saved to ${body?.merged_path || outputPath}`;
+    renderTrainSaveModal();
+    await refreshModels();
+    setTimeout(() => {
+      if (!state.saveTrainRunning) setTrainSaveModalOpen(false);
+    }, 350);
+  } catch (err) {
+    state.saveTrainStatus = `failed: ${err}`;
+    renderTrainSaveModal();
+  } finally {
+    state.saveTrainRunning = false;
+    renderTrainingModels();
+    renderTrainSaveModal();
   }
 }
 
@@ -1047,6 +1172,11 @@ function init() {
     state.selectedTrainModel = target.value || "";
     renderTrainModelSelect();
   });
+  el("train-profile-input")?.addEventListener("input", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    state.selectedTrainProfile = target.value || "";
+  });
   el("train-submit")?.addEventListener("click", () => {
     void requestTrain();
   });
@@ -1062,12 +1192,37 @@ function init() {
     if (target.id !== "train-guide-modal") return;
     setTrainGuideModalOpen(false);
   });
+  el("train-save-cancel")?.addEventListener("click", () => {
+    if (state.saveTrainRunning) return;
+    setTrainSaveModalOpen(false);
+  });
+  el("train-save-confirm")?.addEventListener("click", () => {
+    void requestSaveMergedTrain();
+  });
+  el("train-save-modal")?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.id !== "train-save-modal") return;
+    if (state.saveTrainRunning) return;
+    setTrainSaveModalOpen(false);
+  });
+  el("train-save-path")?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    if (state.saveTrainRunning) return;
+    void requestSaveMergedTrain();
+  });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     const modal = el("train-guide-modal");
-    if (!(modal instanceof HTMLDivElement)) return;
-    if (modal.hidden) return;
-    setTrainGuideModalOpen(false);
+    if (modal instanceof HTMLDivElement && !modal.hidden) {
+      setTrainGuideModalOpen(false);
+      return;
+    }
+    const saveModal = el("train-save-modal");
+    if (!(saveModal instanceof HTMLDivElement)) return;
+    if (saveModal.hidden || state.saveTrainRunning) return;
+    setTrainSaveModalOpen(false);
   });
   el("train-upload-btn")?.addEventListener("click", () => {
     const fileInput = el("train-file-input");
@@ -1104,6 +1259,15 @@ function init() {
     const modelId = target.dataset.modelId;
     if (!modelId) return;
     void requestDeleteInstalled(modelId);
+  });
+  el("training-models")?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement)) return;
+    if (target.dataset.action !== "save-merged-train") return;
+    const taskId = target.dataset.taskId;
+    const profile = target.dataset.profile || "";
+    if (!taskId) return;
+    openTrainSaveModal(taskId, profile);
   });
   el("model-search")?.addEventListener("input", (event) => {
     const target = event.target;

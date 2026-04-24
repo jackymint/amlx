@@ -313,7 +313,8 @@ button {
 
 #cache-clear,
 #train-upload-btn,
-#train-submit {
+#train-submit,
+#train-save-confirm {
   background: linear-gradient(90deg, #1f2937, #374151);
   color: #ffffff;
   border: 1px solid rgba(17, 24, 39, 0.14);
@@ -322,19 +323,22 @@ button {
 
 #cache-clear:hover,
 #train-upload-btn:hover,
-#train-submit:hover {
+#train-submit:hover,
+#train-save-confirm:hover {
   filter: brightness(1.05);
 }
 
 #cache-clear:active,
 #train-upload-btn:active,
-#train-submit:active {
+#train-submit:active,
+#train-save-confirm:active {
   transform: translateY(1px);
 }
 
 #cache-clear:disabled,
 #train-upload-btn:disabled,
-#train-submit:disabled {
+#train-submit:disabled,
+#train-save-confirm:disabled {
   opacity: 0.6;
   cursor: not-allowed;
   box-shadow: none;
@@ -765,6 +769,11 @@ button {
   min-width: 220px;
 }
 
+#train-profile-input {
+  flex: 1;
+  min-width: 220px;
+}
+
 #train-dataset {
   margin-top: 12px;
   min-height: 120px;
@@ -916,6 +925,27 @@ button {
 
 #training-models {
   margin-top: 14px;
+}
+
+#training-models .job {
+  padding: 12px;
+  gap: 8px;
+}
+
+.train-save-card {
+  max-width: 560px;
+}
+
+.train-save-card label {
+  margin-top: 12px;
+  display: block;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+#train-save-path {
+  margin-top: 8px;
+  width: 100%;
 }
 
 .lift {

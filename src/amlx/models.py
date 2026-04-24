@@ -84,6 +84,9 @@ class FineTuneTask:
     task_id: str
     model_id: str
     effective_model: str
+    profile: str
+    profile_slug: str
+    round: int
     status: str
     progress: int
     message: str
@@ -94,6 +97,9 @@ class FineTuneTask:
     updated_at: float
     finished_at: float | None = None
     adapter_path: str | None = None
+    resume_adapter_file: str | None = None
+    run_root: str | None = None
+    merged_path: str | None = None
     error: str | None = None
 
 
@@ -263,8 +269,19 @@ class ModelManager:
 
     def list_finetune_tasks(self) -> list[dict[str, str | int | float | None]]:
         with self._lock:
-            tasks = sorted(self._finetune_tasks.values(), key=lambda x: x.started_at, reverse=True)
-            return [asdict(t) for t in tasks]
+            in_memory = {task.task_id: asdict(task) for task in self._finetune_tasks.values()}
+        recovered = self._scan_finetune_runs()
+        for row in recovered:
+            task_id = str(row.get("task_id", "")).strip()
+            if not task_id:
+                continue
+            in_memory.setdefault(task_id, row)
+        tasks = list(in_memory.values())
+        tasks.sort(
+            key=lambda x: float(x.get("started_at") or x.get("updated_at") or 0),
+            reverse=True,
+        )
+        return tasks
 
     def get_finetune_task(self, task_id: str) -> dict[str, str | int | float | None] | None:
         with self._lock:
@@ -279,27 +296,157 @@ class ModelManager:
         model_id: str | None = None,
         effective_model: str | None = None,
     ) -> str | None:
-        with self._lock:
-            best: FineTuneTask | None = None
-            for task in self._finetune_tasks.values():
-                if task.status != "completed":
+        tasks = self.list_finetune_tasks()
+        best: dict[str, str | int | float | None] | None = None
+        for task in tasks:
+            if task.get("status") != "completed":
+                continue
+            adapter_path = str(task.get("adapter_path") or "").strip()
+            if not adapter_path:
+                continue
+            if model_id and str(task.get("model_id")) == model_id:
+                pass
+            elif effective_model and str(task.get("effective_model")) == effective_model:
+                pass
+            else:
+                continue
+            if best is None:
+                best = task
+                continue
+            best_ts = float(best.get("finished_at") or best.get("updated_at") or 0)
+            task_ts = float(task.get("finished_at") or task.get("updated_at") or 0)
+            if task_ts >= best_ts:
+                best = task
+        if best is None:
+            return None
+        return str(best.get("adapter_path") or "")
+
+    def latest_completed_profile_task(self, *, profile: str) -> dict[str, str | int | float | None] | None:
+        profile_name = self._normalize_profile_name(profile, model_id="")
+        profile_slug = self._profile_slug(profile_name)
+        tasks = self.list_finetune_tasks()
+        best: dict[str, str | int | float | None] | None = None
+        for task in tasks:
+            if task.get("status") != "completed":
+                continue
+            adapter_path = str(task.get("adapter_path") or "").strip()
+            if not adapter_path:
+                continue
+            task_slug = str(task.get("profile_slug") or "").strip()
+            task_profile = str(task.get("profile") or "").strip()
+            if task_slug and task_slug == profile_slug:
+                pass
+            elif task_profile and self._profile_slug(task_profile) == profile_slug:
+                pass
+            else:
+                continue
+            if best is None:
+                best = task
+                continue
+            best_ts = float(best.get("finished_at") or best.get("updated_at") or 0)
+            task_ts = float(task.get("finished_at") or task.get("updated_at") or 0)
+            if task_ts >= best_ts:
+                best = task
+        return best
+
+    def save_merged_finetune(
+        self,
+        *,
+        task_id: str | None,
+        profile: str | None,
+        adapter_path: str | None,
+        effective_model: str | None,
+        output_path: str,
+    ) -> dict[str, str | int | float | None]:
+        chosen: dict[str, str | int | float | None] | None = None
+        resolved_task_id = str(task_id or "").strip()
+        if resolved_task_id:
+            for row in self.list_finetune_tasks():
+                if str(row.get("task_id") or "") != resolved_task_id:
                     continue
-                if not task.adapter_path:
-                    continue
-                if model_id and task.model_id == model_id:
-                    pass
-                elif effective_model and task.effective_model == effective_model:
-                    pass
-                else:
-                    continue
-                if best is None:
-                    best = task
-                    continue
-                best_ts = float(best.finished_at or best.updated_at or 0)
-                task_ts = float(task.finished_at or task.updated_at or 0)
-                if task_ts >= best_ts:
-                    best = task
-            return best.adapter_path if best is not None else None
+                chosen = row
+                break
+            if chosen is None:
+                raise ValueError("Training task not found")
+            if str(chosen.get("status") or "") != "completed":
+                raise ValueError("Training task is not completed yet")
+            if not effective_model:
+                effective_model = str(chosen.get("effective_model") or "")
+            if not adapter_path:
+                adapter_path = str(chosen.get("adapter_path") or "")
+
+        profile_name = str(profile or "").strip()
+        if chosen is None and profile_name:
+            chosen = self.latest_completed_profile_task(profile=profile_name)
+            if chosen is None:
+                raise ValueError(f"No completed training found for profile '{profile_name}'")
+            if not effective_model:
+                effective_model = str(chosen.get("effective_model") or "")
+            if not adapter_path:
+                adapter_path = str(chosen.get("adapter_path") or "")
+
+        effective_model = str(effective_model or "").strip()
+        adapter_path = str(adapter_path or "").strip()
+        if not effective_model:
+            raise ValueError("Effective model is required")
+        if not adapter_path:
+            raise ValueError("Adapter path is required")
+
+        target = Path(output_path).expanduser()
+        if not target.is_absolute():
+            target = Path.cwd() / target
+        target = target.resolve()
+        if target.exists():
+            if not target.is_dir():
+                raise ValueError(f"Output path is not a directory: {target}")
+            if any(target.iterdir()):
+                raise ValueError(f"Output path is not empty: {target}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+
+        self._fuse_adapter_into_model(
+            effective_model=effective_model,
+            adapter_path=Path(adapter_path),
+            target_path=target,
+        )
+
+        merged_path = str(target)
+        if chosen is not None:
+            chosen = dict(chosen)
+            chosen["merged_path"] = merged_path
+            chosen["updated_at"] = time()
+        if resolved_task_id:
+            with self._lock:
+                current = self._finetune_tasks.get(resolved_task_id)
+                if current is not None:
+                    current.merged_path = merged_path
+                    current.updated_at = time()
+                    payload = asdict(current)
+                    self._persist_finetune_task(payload)
+                    return payload
+        if chosen is None:
+            chosen = {
+                "task_id": resolved_task_id or f"saved_{uuid.uuid4().hex[:12]}",
+                "model_id": effective_model,
+                "effective_model": effective_model,
+                "status": "completed",
+                "progress": 100,
+                "message": "Merged and saved",
+                "fine_tune_type": "qlora",
+                "epochs": 0,
+                "train_samples": 0,
+                "started_at": time(),
+                "updated_at": time(),
+                "finished_at": time(),
+                "adapter_path": adapter_path,
+                "merged_path": merged_path,
+                "error": None,
+            }
+        if resolved_task_id:
+            run_root_raw = str((chosen or {}).get("run_root") or "").strip()
+            run_root = Path(run_root_raw) if run_root_raw else (self._finetune_root() / resolved_task_id)
+            run_root.mkdir(parents=True, exist_ok=True)
+            self._write_finetune_meta(run_root, chosen)
+        return chosen
 
     def get_task(self, task_id: str) -> dict[str, str | int | float | None] | None:
         with self._lock:
@@ -340,6 +487,7 @@ class ModelManager:
         *,
         model_id: str,
         effective_model: str,
+        profile: str | None,
         samples: list[str],
         epochs: int,
         fine_tune_type: str = "qlora",
@@ -348,15 +496,29 @@ class ModelManager:
         if not clean:
             raise ValueError("Training data is empty.")
 
-        existing = self._active_finetune_task_for_model(model_id)
+        profile_name = self._normalize_profile_name(profile, model_id=model_id)
+        profile_slug = self._profile_slug(profile_name)
+
+        existing = self._active_finetune_task_for_profile(profile_slug)
         if existing is not None:
             return asdict(existing)
 
+        previous = self.latest_completed_profile_task(profile=profile_name)
+        previous_round = int(previous.get("round") or 0) if previous else 0
+        round_no = previous_round + 1
+        previous_adapter = str(previous.get("adapter_path") or "").strip() if previous else ""
+        resume_adapter_file = self._adapter_weights_file(Path(previous_adapter)) if previous_adapter else None
+        task_id = f"ft_{profile_slug}_{uuid.uuid4().hex[:12]}"
+        run_root = self._profile_runs_root(profile_slug) / task_id
+
         now = time()
         task = FineTuneTask(
-            task_id=f"ft_{uuid.uuid4().hex[:18]}",
+            task_id=task_id,
             model_id=model_id,
             effective_model=effective_model,
+            profile=profile_name,
+            profile_slug=profile_slug,
+            round=round_no,
             status="queued",
             progress=0,
             message="Queued",
@@ -365,6 +527,8 @@ class ModelManager:
             train_samples=len(clean),
             started_at=now,
             updated_at=now,
+            resume_adapter_file=resume_adapter_file,
+            run_root=str(run_root),
         )
         with self._lock:
             self._finetune_tasks[task.task_id] = task
@@ -375,7 +539,9 @@ class ModelManager:
             daemon=True,
         )
         worker.start()
-        return asdict(task)
+        payload = asdict(task)
+        self._persist_finetune_task(payload)
+        return payload
 
     def _active_task_for_model(self, model_id: str) -> DownloadTask | None:
         with self._lock:
@@ -384,10 +550,10 @@ class ModelManager:
                     return task
         return None
 
-    def _active_finetune_task_for_model(self, model_id: str) -> FineTuneTask | None:
+    def _active_finetune_task_for_profile(self, profile_slug: str) -> FineTuneTask | None:
         with self._lock:
             for task in self._finetune_tasks.values():
-                if task.model_id == model_id and task.status in {"queued", "running"}:
+                if task.profile_slug == profile_slug and task.status in {"queued", "running"}:
                     return task
         return None
 
@@ -479,7 +645,8 @@ class ModelManager:
         if task is None:
             return
 
-        run_root = self.models_dir / ".finetunes" / str(task_id)
+        run_root_raw = str(task.get("run_root") or "").strip()
+        run_root = Path(run_root_raw) if run_root_raw else (self._finetune_root() / str(task_id))
         data_dir = run_root / "data"
         adapter_dir = run_root / "adapters"
         data_dir.mkdir(parents=True, exist_ok=True)
@@ -536,7 +703,7 @@ class ModelManager:
                     "steps_per_report": steps_per_report,
                     "steps_per_eval": max(iters + 1, 5000),
                     "grad_accumulation_steps": 1,
-                    "resume_adapter_file": None,
+                    "resume_adapter_file": task.get("resume_adapter_file"),
                     "adapter_path": str(adapter_dir),
                     "save_every": save_every,
                     "max_seq_length": 2048,
@@ -555,6 +722,9 @@ class ModelManager:
             )
 
             self._fine_tuner(args, callback)
+            adapter_weights = adapter_dir / "adapters.safetensors"
+            if not adapter_weights.exists():
+                adapter_weights.touch()
             self._update_finetune(
                 task_id,
                 status="completed",
@@ -563,6 +733,9 @@ class ModelManager:
                 adapter_path=str(adapter_dir),
                 finished_at=time(),
             )
+            completed = self.get_finetune_task(task_id)
+            if completed is not None:
+                self._persist_finetune_task(completed)
         except Exception as exc:
             self._update_finetune(
                 task_id,
@@ -572,6 +745,9 @@ class ModelManager:
                 error=str(exc),
                 finished_at=time(),
             )
+            failed = self.get_finetune_task(task_id)
+            if failed is not None:
+                self._persist_finetune_task(failed)
 
     def _update(self, task_id: str, **updates: str | int | float | None) -> None:
         with self._lock:
@@ -592,6 +768,162 @@ class ModelManager:
                 if hasattr(task, key):
                     setattr(task, key, value)  # type: ignore[arg-type]
             task.updated_at = time()
+            snapshot = asdict(task)
+        self._persist_finetune_task(snapshot)
+
+    def _finetune_root(self) -> Path:
+        return self.models_dir / ".finetunes"
+
+    def _profile_runs_root(self, profile_slug: str) -> Path:
+        return self._finetune_root() / "profiles" / profile_slug / "runs"
+
+    @staticmethod
+    def _normalize_profile_name(profile: str | None, *, model_id: str) -> str:
+        raw = str(profile or "").strip()
+        if raw:
+            return raw
+        base = str(model_id or "model").split("/")[-1]
+        return f"{base}-default"
+
+    @staticmethod
+    def _profile_slug(profile_name: str) -> str:
+        slug = re.sub(r"[^a-z0-9]+", "-", profile_name.strip().lower()).strip("-")
+        return slug or "default-profile"
+
+    @staticmethod
+    def _adapter_weights_file(adapter_dir: Path) -> str | None:
+        candidate = adapter_dir / "adapters.safetensors"
+        if candidate.exists():
+            return str(candidate)
+        return None
+
+    @staticmethod
+    def _finetune_meta_path(run_root: Path) -> Path:
+        return run_root / "task.json"
+
+    def _persist_finetune_task(self, task: dict[str, str | int | float | None]) -> None:
+        task_id = str(task.get("task_id") or "").strip()
+        if not task_id:
+            return
+        run_root_raw = str(task.get("run_root") or "").strip()
+        run_root = Path(run_root_raw) if run_root_raw else (self._finetune_root() / task_id)
+        run_root.mkdir(parents=True, exist_ok=True)
+        self._write_finetune_meta(run_root, task)
+
+    def _write_finetune_meta(self, run_root: Path, task: dict[str, str | int | float | None]) -> None:
+        payload = dict(task)
+        try:
+            self._finetune_meta_path(run_root).write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception:
+            return
+
+    def _scan_finetune_runs(self) -> list[dict[str, str | int | float | None]]:
+        root = self._finetune_root()
+        if not root.exists():
+            return []
+        out: list[dict[str, str | int | float | None]] = []
+        run_dirs: list[Path] = []
+        run_dirs.extend([p for p in root.glob("*") if p.is_dir() and p.name != "profiles"])
+        profiles_root = root / "profiles"
+        if profiles_root.exists():
+            for profile_dir in profiles_root.glob("*"):
+                runs_dir = profile_dir / "runs"
+                if not runs_dir.exists():
+                    continue
+                run_dirs.extend([p for p in runs_dir.glob("*") if p.is_dir()])
+        for run_root in sorted(run_dirs):
+            meta = self._load_finetune_meta(run_root)
+            if meta is not None:
+                out.append(meta)
+                continue
+            recovered = self._recover_finetune_task_from_run(run_root)
+            if recovered is not None:
+                out.append(recovered)
+        return out
+
+    def _load_finetune_meta(self, run_root: Path) -> dict[str, str | int | float | None] | None:
+        meta_path = self._finetune_meta_path(run_root)
+        if not meta_path.exists():
+            return None
+        try:
+            data = json.loads(meta_path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                return None
+        except Exception:
+            return None
+        data.setdefault("task_id", run_root.name)
+        profile_name = str(data.get("profile") or "").strip()
+        if not profile_name:
+            profile_name = self._profile_name_from_run(run_root)
+        data.setdefault("profile", profile_name)
+        data.setdefault("profile_slug", self._profile_slug(profile_name))
+        data.setdefault("round", 1)
+        data.setdefault("resume_adapter_file", None)
+        data.setdefault("run_root", str(run_root))
+        data.setdefault("merged_path", None)
+        return data  # type: ignore[return-value]
+
+    def _recover_finetune_task_from_run(self, run_root: Path) -> dict[str, str | int | float | None] | None:
+        adapter_dir = run_root / "adapters"
+        if not adapter_dir.exists() or not adapter_dir.is_dir():
+            return None
+        effective_model = ""
+        model_id = ""
+        fine_tune_type = "qlora"
+        adapter_config = adapter_dir / "adapter_config.json"
+        if adapter_config.exists():
+            try:
+                data = json.loads(adapter_config.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    effective_model = str(
+                        data.get("model")
+                        or data.get("base_model")
+                        or data.get("model_path")
+                        or ""
+                    )
+                    fine_tune_type = str(data.get("fine_tune_type") or fine_tune_type)
+            except Exception:
+                pass
+        model_id = effective_model
+        if not model_id:
+            model_id = run_root.name
+        profile_name = self._profile_name_from_run(run_root)
+        profile_slug = self._profile_slug(profile_name)
+        ts = run_root.stat().st_mtime
+        return {
+            "task_id": run_root.name,
+            "model_id": model_id,
+            "effective_model": effective_model,
+            "profile": profile_name,
+            "profile_slug": profile_slug,
+            "round": 1,
+            "status": "completed",
+            "progress": 100,
+            "message": "Recovered from disk",
+            "fine_tune_type": fine_tune_type,
+            "epochs": 0,
+            "train_samples": 0,
+            "started_at": ts,
+            "updated_at": ts,
+            "finished_at": ts,
+            "adapter_path": str(adapter_dir),
+            "resume_adapter_file": None,
+            "run_root": str(run_root),
+            "merged_path": None,
+            "error": None,
+        }
+
+    @staticmethod
+    def _profile_name_from_run(run_root: Path) -> str:
+        parts = run_root.parts
+        if "profiles" in parts:
+            idx = parts.index("profiles")
+            if idx + 1 < len(parts):
+                return parts[idx + 1]
+        return "legacy-profile"
 
     @staticmethod
     def _model_path(model_id: str) -> Path:
@@ -621,6 +953,45 @@ class ModelManager:
             resume_download=True,
         )
         return local_dir
+
+    @staticmethod
+    def _fuse_adapter_into_model(
+        *,
+        effective_model: str,
+        adapter_path: Path,
+        target_path: Path,
+    ) -> None:
+        if not adapter_path.exists() or not adapter_path.is_dir():
+            raise ValueError(f"Adapter directory not found: {adapter_path}")
+
+        try:
+            from mlx_lm import fuse as mlx_fuse  # type: ignore
+        except Exception as exc:
+            raise RuntimeError(
+                "mlx-lm is required for merge/save. Install with `pip install 'amlx[mlx]'`."
+            ) from exc
+
+        model, tokenizer, config = mlx_fuse.load(
+            effective_model,
+            adapter_path=str(adapter_path),
+            return_config=True,
+        )
+        fused_linears = [
+            (name, module.fuse(dequantize=False))
+            for name, module in model.named_modules()
+            if hasattr(module, "fuse")
+        ]
+        if fused_linears:
+            model.update_modules(mlx_fuse.tree_unflatten(fused_linears))
+
+        mlx_fuse.save(
+            target_path,
+            effective_model,
+            model,
+            tokenizer,
+            config,
+            donate_model=False,
+        )
 
     @staticmethod
     def _dir_size_bytes(path: Path) -> int:

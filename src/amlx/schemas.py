@@ -96,7 +96,16 @@ class RuntimePowerRequest(BaseModel):
 
 class ModelTrainRequest(BaseModel):
     model_id: str
+    profile: str | None = None
     dataset_text: str | None = None
     samples: list[str] | None = None
     epochs: int = Field(default=1, ge=1, le=10)
     fine_tune_type: Literal["lora", "qlora", "dora"] = "qlora"
+
+
+class ModelTrainSaveRequest(BaseModel):
+    task_id: str | None = None
+    profile: str | None = None
+    adapter_path: str | None = None
+    effective_model: str | None = None
+    output_path: str = Field(min_length=1)

@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from tempfile import mkdtemp
 from time import sleep
@@ -75,6 +76,7 @@ def build_client() -> TestClient:
     )
     app = create_app(service, model_manager=manager)
     app.state.test_adapter = adapter
+    app.state.test_model_manager = manager
     return TestClient(app)
 
 
@@ -280,6 +282,244 @@ def test_chat_auto_applies_latest_completed_adapter() -> None:
     assert chat.status_code == 200
     assert client.app.state.test_adapter.last_adapter
     assert client.app.state.test_adapter.last_adapter.get(model_id) == adapter_path
+
+
+def test_train_profile_resume_rounds() -> None:
+    client = build_client()
+    model_id = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+    profile = "customer-support-v1"
+
+    first = client.post(
+        "/v1/models/train",
+        json={
+            "model_id": model_id,
+            "profile": profile,
+            "samples": ["Round one sample"],
+            "epochs": 1,
+            "fine_tune_type": "qlora",
+        },
+    )
+    assert first.status_code == 200
+    first_id = first.json()["task_id"]
+
+    first_final = None
+    for _ in range(40):
+        trained = client.get("/v1/models/training")
+        entries = trained.json()["tasks"]
+        match = [item for item in entries if item["task_id"] == first_id]
+        if match:
+            first_final = match[0]
+            if first_final["status"] == "completed":
+                break
+        sleep(0.05)
+    assert first_final is not None
+    assert first_final["status"] == "completed"
+    assert first_final["profile"] == profile
+    assert first_final["round"] == 1
+
+    second = client.post(
+        "/v1/models/train",
+        json={
+            "model_id": model_id,
+            "profile": profile,
+            "samples": ["Round two sample"],
+            "epochs": 1,
+            "fine_tune_type": "qlora",
+        },
+    )
+    assert second.status_code == 200
+    second_id = second.json()["task_id"]
+
+    second_final = None
+    for _ in range(40):
+        trained = client.get("/v1/models/training")
+        entries = trained.json()["tasks"]
+        match = [item for item in entries if item["task_id"] == second_id]
+        if match:
+            second_final = match[0]
+            if second_final["status"] == "completed":
+                break
+        sleep(0.05)
+    assert second_final is not None
+    assert second_final["status"] == "completed"
+    assert second_final["profile"] == profile
+    assert second_final["round"] == 2
+    assert second_final["resume_adapter_file"]
+    assert str(second_final["resume_adapter_file"]).endswith("adapters.safetensors")
+
+
+def test_train_save_merged_model() -> None:
+    client = build_client()
+    manager = client.app.state.test_model_manager
+    model_id = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+
+    train = client.post(
+        "/v1/models/train",
+        json={
+            "model_id": model_id,
+            "samples": ["Always answer in short form."],
+            "epochs": 1,
+            "fine_tune_type": "qlora",
+        },
+    )
+    assert train.status_code == 200
+    task_id = train.json()["task_id"]
+
+    final = None
+    for _ in range(40):
+        trained = client.get("/v1/models/training")
+        assert trained.status_code == 200
+        entries = trained.json()["tasks"]
+        match = [item for item in entries if item["task_id"] == task_id]
+        if match:
+            final = match[0]
+            if final["status"] == "completed":
+                break
+        sleep(0.05)
+    assert final is not None
+    assert final["status"] == "completed"
+
+    out_dir = Path(mkdtemp(prefix="amlx-test-merged-")) / "fused-model"
+
+    def fake_fuse(*, effective_model: str, adapter_path: Path, target_path: Path) -> None:
+        assert effective_model
+        assert adapter_path.exists()
+        target_path.mkdir(parents=True, exist_ok=True)
+        (target_path / "weights.safetensors").write_text("merged", encoding="utf-8")
+
+    manager._fuse_adapter_into_model = staticmethod(fake_fuse)  # type: ignore[method-assign]
+
+    saved = client.post(
+        "/v1/models/train/save",
+        json={"task_id": task_id, "output_path": str(out_dir)},
+    )
+    assert saved.status_code == 200
+    body = saved.json()
+    assert body["ok"] is True
+    assert body["merged_path"] == str(out_dir.resolve())
+    assert (out_dir / "weights.safetensors").exists()
+
+
+def test_train_save_merged_model_by_profile() -> None:
+    client = build_client()
+    manager = client.app.state.test_model_manager
+    model_id = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+    profile = "customer-support-v1"
+
+    train = client.post(
+        "/v1/models/train",
+        json={
+            "model_id": model_id,
+            "profile": profile,
+            "samples": ["Always answer in short form."],
+            "epochs": 1,
+            "fine_tune_type": "qlora",
+        },
+    )
+    assert train.status_code == 200
+    task_id = train.json()["task_id"]
+
+    final = None
+    for _ in range(40):
+        trained = client.get("/v1/models/training")
+        entries = trained.json()["tasks"]
+        match = [item for item in entries if item["task_id"] == task_id]
+        if match:
+            final = match[0]
+            if final["status"] == "completed":
+                break
+        sleep(0.05)
+    assert final is not None
+    assert final["status"] == "completed"
+
+    out_dir = Path(mkdtemp(prefix="amlx-test-merged-profile-")) / "fused-model"
+
+    def fake_fuse(*, effective_model: str, adapter_path: Path, target_path: Path) -> None:
+        assert effective_model
+        assert adapter_path.exists()
+        target_path.mkdir(parents=True, exist_ok=True)
+        (target_path / "weights.safetensors").write_text("merged", encoding="utf-8")
+
+    manager._fuse_adapter_into_model = staticmethod(fake_fuse)  # type: ignore[method-assign]
+
+    saved = client.post(
+        "/v1/models/train/save",
+        json={"profile": profile, "output_path": str(out_dir)},
+    )
+    assert saved.status_code == 200
+    body = saved.json()
+    assert body["ok"] is True
+    assert body["profile"] == profile
+    assert body["merged_path"] == str(out_dir.resolve())
+
+
+def test_training_history_recovers_from_disk_and_save_by_task_id() -> None:
+    client = build_client()
+    manager = client.app.state.test_model_manager
+    run_root = manager.models_dir / ".finetunes" / "ft_disk_recovered"
+    adapter_dir = run_root / "adapters"
+    adapter_dir.mkdir(parents=True, exist_ok=True)
+    task_meta = {
+        "task_id": "ft_disk_recovered",
+        "model_id": "mlx-community/Llama-3.2-3B-Instruct-4bit",
+        "effective_model": "mlx-community/Llama-3.2-3B-Instruct-4bit",
+        "status": "completed",
+        "progress": 100,
+        "message": "Recovered from disk",
+        "fine_tune_type": "qlora",
+        "epochs": 1,
+        "train_samples": 2,
+        "started_at": 1.0,
+        "updated_at": 2.0,
+        "finished_at": 2.0,
+        "adapter_path": str(adapter_dir),
+        "merged_path": None,
+        "error": None,
+    }
+    (run_root / "task.json").write_text(json.dumps(task_meta), encoding="utf-8")
+
+    # Simulate restart: new manager has no in-memory training tasks.
+    cache_dir = Path(mkdtemp(prefix="amlx-test-cache-recovered-"))
+    cache = PrefixCache(
+        memory_cache=LRUCache(capacity=16),
+        disk_cache=DiskCache(db_path=cache_dir / "test_prefix.sqlite3"),
+        block_store=PagedBlockStore(
+            root_dir=cache_dir / "blocks",
+            index_db=cache_dir / "blocks.sqlite3",
+            block_chars=256,
+        ),
+    )
+    adapter = TrackingEchoAdapter()
+    scheduler = BatchScheduler(adapter=adapter, max_batch_size=8, max_wait_ms=20)
+    service = InferenceService(adapter=adapter, cache=cache, scheduler=scheduler)
+    recovered_manager = ModelManager(models_dir=manager.models_dir)
+    app = create_app(service, model_manager=recovered_manager)
+    recovered_client = TestClient(app)
+
+    history = recovered_client.get("/v1/models/training")
+    assert history.status_code == 200
+    entries = history.json()["tasks"]
+    assert any(item["task_id"] == "ft_disk_recovered" for item in entries)
+
+    out_dir = Path(mkdtemp(prefix="amlx-test-merged-recovered-")) / "fused-model"
+
+    def fake_fuse(*, effective_model: str, adapter_path: Path, target_path: Path) -> None:
+        assert effective_model == "mlx-community/Llama-3.2-3B-Instruct-4bit"
+        assert adapter_path == adapter_dir
+        target_path.mkdir(parents=True, exist_ok=True)
+        (target_path / "weights.safetensors").write_text("merged", encoding="utf-8")
+
+    recovered_manager._fuse_adapter_into_model = staticmethod(fake_fuse)  # type: ignore[method-assign]
+
+    saved = recovered_client.post(
+        "/v1/models/train/save",
+        json={"task_id": "ft_disk_recovered", "output_path": str(out_dir)},
+    )
+    assert saved.status_code == 200
+    body = saved.json()
+    assert body["ok"] is True
+    assert body["task_id"] == "ft_disk_recovered"
+    assert body["merged_path"] == str(out_dir.resolve())
 
 
 def test_chat_completions_tool_call_required() -> None:

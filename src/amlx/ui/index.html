@@ -136,11 +136,13 @@
             <h2>Train Loaded Model</h2>
             <button id="train-guide-open" type="button" class="guide-trigger" aria-label="Open training guideline">?</button>
           </div>
-          <p class="hint">Choose a loaded model, upload dataset (.json/.jsonl), then training starts automatically.</p>
+          <p class="hint">Choose model + training profile, then upload dataset (.json/.jsonl) to continue profile training automatically.</p>
           <div class="train-box">
             <div class="train-row">
               <label for="train-model-select">Model</label>
               <select id="train-model-select"></select>
+              <label for="train-profile-input">Profile</label>
+              <input id="train-profile-input" type="text" value="customer-support-v1" placeholder="customer-support-v1" />
               <label for="train-epochs-select">Epochs</label>
               <select id="train-epochs-select">
                 <option value="1" selected>1</option>
@@ -203,6 +205,22 @@ If missing city, ask follow-up first</pre>
               <pre>{"text":"use tool search_docs for policy lookup"}
 {"prompt":"find invoice","response":"call find_invoice with {\"id\":\"INV-001\"}"}</pre>
             </article>
+          </div>
+        </div>
+      </div>
+
+      <div id="train-save-modal" class="guide-modal" role="dialog" aria-modal="true" aria-labelledby="train-save-title" hidden>
+        <div class="guide-modal-card train-save-card">
+          <div class="guide-modal-head">
+            <h3 id="train-save-title">Save Merged Model</h3>
+            <button id="train-save-cancel" type="button" class="ghost mini">Cancel</button>
+          </div>
+          <p id="train-save-subtitle" class="guide-modal-sub">Choose output path for merged base+adapter model.</p>
+          <label for="train-save-path">Output Path</label>
+          <input id="train-save-path" type="text" placeholder="./exports/model-task" />
+          <div class="train-actions">
+            <button id="train-save-confirm" type="button">Save</button>
+            <span id="train-save-status" class="chip" style="display:none;"></span>
           </div>
         </div>
       </div>

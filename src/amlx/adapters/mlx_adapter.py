@@ -79,10 +79,20 @@ class MLXAdapter(ModelAdapter):
 
         lm, tokenizer = self._load(model)
         if target_adapter:
-            try:
-                from mlx_lm import load_adapters  # type: ignore
-            except Exception as exc:
-                raise RuntimeError("Failed to import mlx_lm.load_adapters for LoRA adapters.") from exc
+            load_adapters = None
+            for module_name in ("mlx_lm", "mlx_lm.utils", "mlx_lm.tuner.utils", "mlx_lm.lora"):
+                try:
+                    module = __import__(module_name, fromlist=["load_adapters"])
+                    candidate = getattr(module, "load_adapters", None)
+                    if callable(candidate):
+                        load_adapters = candidate
+                        break
+                except Exception:
+                    continue
+            if load_adapters is None:
+                raise RuntimeError(
+                    "Failed to import load_adapters for LoRA adapters from mlx_lm."
+                )
             load_adapters(lm, target_adapter)
         self._loaded[model] = _LoadedModel(
             thread_id=current_tid,

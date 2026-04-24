@@ -60,6 +60,8 @@ class PrefixCache:
     def clear(self) -> None:
         self.memory.clear()
         self.disk.clear()
+        if self.blocks is not None:
+            self.blocks.clear()
         self.stats = PrefixCacheStats()
 
     def put(self, key: str, value: str) -> None:
