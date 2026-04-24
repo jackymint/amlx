@@ -3,8 +3,8 @@ class Amlx < Formula
 
   desc "MacBook-first local AI inference server with OpenAI-compatible API"
   homepage "https://github.com/jackymint/amlx"
-  url "https://github.com/jackymint/amlx/archive/refs/tags/v0.5.0.tar.gz"
-  sha256 "7db763a032c70cc8c77050f68ef95c5984115210af9bfc7e665615ab668b8134"
+  url "https://github.com/jackymint/amlx/archive/refs/tags/v0.9.0.tar.gz"
+  sha256 "23f5353c165451ab348057b6f537ae41d57e43c1a973e48c7d5090a7042d218c"
   license "Apache-2.0"
 
   depends_on "python@3.12"
