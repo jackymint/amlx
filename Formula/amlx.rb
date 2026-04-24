@@ -8,6 +8,7 @@ class Amlx < Formula
   license "Apache-2.0"
 
   depends_on "python@3.12"
+  depends_on "rust" => :build
 
   # ── core dependencies ────────────────────────────────────────────────────────
 
@@ -77,8 +78,8 @@ class Amlx < Formula
   end
 
   resource "pydantic-core" do
-    url "https://files.pythonhosted.org/packages/19/78/f381d643b12378fee782a72126ec5d793081ef03791c28a0fd542a5bee64/pydantic_core-2.33.1-cp312-cp312-macosx_11_0_arm64.whl"
-    sha256 "99b56acd433386c8f20be5c4000786d1e7ca0523c8eefc995d14d79c7a081498"
+    url "https://files.pythonhosted.org/packages/17/19/ed6a078a5287aea7922de6841ef4c06157931622c89c2a47940837b5eecd/pydantic_core-2.33.1.tar.gz"
+    sha256 "bcc9c6fdb0ced789245b02b7d6603e17d1563064ddcfc36f046b61c0c05dd9df"
   end
 
   resource "python-dotenv" do
@@ -172,18 +173,15 @@ class Amlx < Formula
   # ── install ──────────────────────────────────────────────────────────────────
 
   def install
-    venv = virtualenv_create(libexec, "python@3.12")
+    # Use "python3" (same as virtualenv_install_with_resources default) to avoid venv creation failure
+    venv = virtualenv_create(libexec, "python3")
 
-    # Install pre-built wheels directly (packages that require Rust/binary build)
-    %w[pydantic-core mlx].each do |r|
-      resource(r).stage do
-        venv.pip_install Dir["*.whl"].first
-      end
-    end
+    # mlx has no sdist — install directly from cached wheel file to avoid extraction issue
+    system libexec/"bin/pip", "install", "--no-deps", resource("mlx").cached_download
 
-    # Install remaining source resources
+    # Install all other resources normally (pydantic-core builds from source via Rust)
     resources.each do |r|
-      next if %w[pydantic-core mlx].include?(r.name)
+      next if r.name == "mlx"
       venv.pip_install r
     end
 
