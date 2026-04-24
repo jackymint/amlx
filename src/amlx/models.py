@@ -260,7 +260,27 @@ class ModelManager:
             return False
 
         shutil.rmtree(resolved)
+        self._remove_finetunes_for_model(model_id)
         return True
+
+    def _remove_finetunes_for_model(self, model_id: str) -> None:
+        tasks = self.list_finetune_tasks()
+        for task in tasks:
+            if str(task.get("model_id") or "") != model_id and str(task.get("effective_model") or "") != model_id:
+                continue
+            run_root_raw = str(task.get("run_root") or "").strip()
+            task_id = str(task.get("task_id") or "").strip()
+            run_root = Path(run_root_raw) if run_root_raw else None
+            if run_root is None and task_id:
+                run_root = self._finetune_root() / task_id
+            if run_root and run_root.exists() and run_root.is_dir():
+                try:
+                    shutil.rmtree(run_root)
+                except Exception:
+                    pass
+            if task_id:
+                with self._lock:
+                    self._finetune_tasks.pop(task_id, None)
 
     def list_tasks(self) -> list[dict[str, str | int | float | None]]:
         with self._lock:
@@ -721,7 +741,17 @@ class ModelManager:
                 total_iters=iters,
             )
 
-            self._fine_tuner(args, callback)
+            try:
+                self._fine_tuner(args, callback)
+            except Exception as resume_err:
+                err_str = str(resume_err).lower()
+                if config.get("resume_adapter_file") and ("matmul" in err_str or "shape" in err_str or "dimension" in err_str):
+                    self._update_finetune(task_id, progress=1, message="Resume adapter incompatible, restarting from scratch")
+                    config["resume_adapter_file"] = None
+                    args = argparse.Namespace(**config)
+                    self._fine_tuner(args, callback)
+                else:
+                    raise
             adapter_weights = adapter_dir / "adapters.safetensors"
             if not adapter_weights.exists():
                 adapter_weights.touch()
@@ -793,7 +823,7 @@ class ModelManager:
     @staticmethod
     def _adapter_weights_file(adapter_dir: Path) -> str | None:
         candidate = adapter_dir / "adapters.safetensors"
-        if candidate.exists():
+        if candidate.exists() and candidate.stat().st_size > 0:
             return str(candidate)
         return None
 

@@ -512,20 +512,26 @@ button {
   min-height: 140px;
 }
 
-.catalog-loading {
-  grid-column: 1 / -1;
-  min-height: 140px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px dashed rgba(17, 24, 39, 0.18);
-  border-radius: 12px;
-  background: linear-gradient(120deg, rgba(255, 255, 255, 0.88), rgba(241, 245, 249, 0.78));
+.model-card-shimmer {
+  pointer-events: none;
 }
 
-.catalog-loading span {
-  color: #4b5563;
-  font-size: 0.85rem;
+.shimmer-line {
+  border-radius: 6px;
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: shimmerSlide 1.4s ease-in-out infinite;
+  margin-bottom: 8px;
+}
+
+.shimmer-line-title { height: 18px; width: 70%; }
+.shimmer-line-sm    { height: 13px; width: 90%; }
+.shimmer-line-xs    { height: 13px; width: 55%; margin-bottom: 12px; }
+.shimmer-line-btn   { height: 30px; width: 88px; border-radius: 8px; margin-top: 4px; }
+
+@keyframes shimmerSlide {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 .catalog-empty {

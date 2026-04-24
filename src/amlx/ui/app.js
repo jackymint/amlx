@@ -396,7 +396,15 @@ function renderCatalog() {
   const node = el("catalog");
   if (!node) return;
   if (state.modelLoading) {
-    node.innerHTML = "<div class='catalog-loading'><span>Searching models...</span></div>";
+    node.innerHTML = Array.from({ length: 6 }, () => `
+      <article class="model-card model-card-shimmer">
+        <div class="shimmer-line shimmer-line-title"></div>
+        <div class="shimmer-line shimmer-line-sm"></div>
+        <div class="shimmer-line shimmer-line-sm"></div>
+        <div class="shimmer-line shimmer-line-xs"></div>
+        <div class="shimmer-line shimmer-line-btn"></div>
+      </article>
+    `).join("");
     return;
   }
   if (state.modelSearchError) {
@@ -604,28 +612,55 @@ function renderTrainingModels() {
     return;
   }
 
-  node.innerHTML = state.trainingModels
-    .map((item) => {
-      const updated = new Date(Number(item.updated_at || item.finished_at || 0) * 1000);
+  // Group by profile_slug, newest task first within each group
+  const groups = new Map();
+  for (const item of state.trainingModels) {
+    const itemModel = String(item.model_id || item.effective_model || "");
+    if (state.selectedTrainModel && itemModel && itemModel !== state.selectedTrainModel) continue;
+    const key = String(item.profile_slug || item.profile || "legacy-profile");
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+
+  if (!groups.size) {
+    node.innerHTML = emptyJobCard("No training history for this model", "Train this model to see results here.");
+    return;
+  }
+
+  node.innerHTML = Array.from(groups.values())
+    .map((runs) => {
+      const latest = runs[0]; // already sorted newest-first from server
+      const profile = latest.profile || "legacy-profile";
+      const totalRounds = runs.length;
+      const progress = Math.max(0, Math.min(100, Number(latest.progress || 0)));
+      const stateText = `${latest.status || "unknown"} • ${progress}%`;
+      const canSave = latest.status === "completed" && latest.adapter_path;
+      const savingThisTask = state.saveTrainRunning && state.saveTrainTaskId === latest.task_id;
+      const updated = new Date(Number(latest.updated_at || latest.finished_at || 0) * 1000);
       const dateLabel = Number.isFinite(updated.getTime()) ? updated.toLocaleString() : "unknown";
-      const progress = Math.max(0, Math.min(100, Number(item.progress || 0)));
-      const stateText = `${item.status || "unknown"} • ${progress}%`;
-      const profile = item.profile || "legacy-profile";
-      const canSave = item.status === "completed" && item.adapter_path;
-      const savingThisTask = state.saveTrainRunning && state.saveTrainTaskId === item.task_id;
+
+      const historyRows = totalRounds > 1
+        ? runs.slice(1).map((r) => {
+            const d = new Date(Number(r.updated_at || r.finished_at || 0) * 1000);
+            const dl = Number.isFinite(d.getTime()) ? d.toLocaleString() : "unknown";
+            return `<span style="opacity:0.6;font-size:0.85em">round ${r.round || "?"} • ${r.status} • ${r.train_samples || 0} samples • ${dl}</span>`;
+          }).join("")
+        : "";
+
       return `
         <div class="job">
           <strong>${profile}</strong>
-          <span>${stateText} • model: ${item.model_id || item.effective_model} • round: ${item.round || 1}</span>
-          <span>type: ${item.fine_tune_type || "qlora"} • samples: ${item.train_samples || 0}</span>
+          <span>${stateText} • round: ${latest.round || 1}${totalRounds > 1 ? ` / ${totalRounds} total` : ""} • model: ${latest.model_id || latest.effective_model}</span>
+          <span>type: ${latest.fine_tune_type || "qlora"} • samples: ${latest.train_samples || 0}</span>
           <div class="progress-track"><div class="progress-fill" style="width:${progress}%"></div></div>
-          <span>${item.message || ""}${item.error ? ` • ${item.error}` : ""} • updated: ${dateLabel}</span>
+          <span>${latest.message || ""}${latest.error ? ` • ${latest.error}` : ""} • updated: ${dateLabel}</span>
           ${
             canSave
-              ? `<div class="job-actions"><button type="button" class="ghost mini" data-action="save-merged-train" data-task-id="${item.task_id}" data-profile="${profile}" ${savingThisTask ? "disabled" : ""}>${savingThisTask ? "Saving..." : "Save"}</button></div>`
+              ? `<div class="job-actions"><button type="button" class="ghost mini" data-action="save-merged-train" data-task-id="${latest.task_id}" data-profile="${profile}" ${savingThisTask ? "disabled" : ""}>${savingThisTask ? "Saving..." : "Save"}</button></div>`
               : ""
           }
-          ${item.merged_path ? `<span>saved: ${item.merged_path}</span>` : ""}
+          ${latest.merged_path ? `<span>saved: ${latest.merged_path}</span>` : ""}
+          ${historyRows}
         </div>
       `;
     })
@@ -918,6 +953,10 @@ async function requestUnload(modelId) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ model_id: modelId }),
     });
+    if (modelId && (modelId === state.selectedChatModel || modelId === state.configuredModel)) {
+      state.selectedChatModel = "";
+      clearChat();
+    }
     await refresh();
     await refreshModels();
   } catch {
@@ -1108,6 +1147,9 @@ async function requestDeleteInstalled(modelId) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ model_id: modelId }),
     });
+    if (modelId && modelId === state.selectedTrainModel) {
+      state.selectedTrainModel = "";
+    }
     await refresh();
     await refreshModels();
     await fetchCatalogOnlineOrCurated();
@@ -1171,6 +1213,7 @@ function init() {
     if (!(target instanceof HTMLSelectElement)) return;
     state.selectedTrainModel = target.value || "";
     renderTrainModelSelect();
+    renderTrainingModels();
   });
   el("train-profile-input")?.addEventListener("input", (event) => {
     const target = event.target;
