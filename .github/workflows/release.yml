@@ -17,38 +17,61 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.meta.outputs.version }}
-      sha256: ${{ steps.sha.outputs.sha256 }}
       tarball_url: ${{ steps.meta.outputs.tarball_url }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract version
+      - name: Extract version and create release
         id: meta
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          REPO="${{ github.repository }}"
-          TARBALL_URL="https://github.com/${REPO}/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "tarball_url=${TARBALL_URL}" >> "$GITHUB_OUTPUT"
-
-      - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes
+          VERSION="${GITHUB_REF_NAME#v}"
+          REPO="${{ github.repository }}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tarball_url=https://github.com/${REPO}/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz" >> "$GITHUB_OUTPUT"
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
 
-      - name: Compute tarball SHA256
-        id: sha
+  build-binary:
+    needs: release
+    runs-on: macos-15
+    outputs:
+      binary_sha256: ${{ steps.binary.outputs.sha256 }}
+      binary_url: ${{ steps.binary.outputs.url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
         run: |
-          curl -fsSL "${{ steps.meta.outputs.tarball_url }}" -o release.tar.gz
-          SHA256=$(sha256sum release.tar.gz | awk '{print $1}')
+          brew install python@3.12 || true
+          python3.12 -m pip install --upgrade pip
+
+      - name: Install dependencies and PyInstaller
+        run: |
+          python3.12 -m pip install -e '.[mlx]' pyinstaller
+
+      - name: Build binary
+        run: |
+          python3.12 -m PyInstaller amlx.spec --distpath dist --workpath /tmp/pyinstaller-work
+
+      - name: Package binary
+        id: binary
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ASSET="amlx-${VERSION}-macos-arm64.tar.gz"
+          tar czf "$ASSET" -C dist amlx
+          SHA256=$(shasum -a 256 "$ASSET" | awk '{print $1}')
+          URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${ASSET}"
           echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+          gh release upload "v${VERSION}" "$ASSET"
 
   update-formula:
-    needs: release
+    needs: [release, build-binary]
     runs-on: ubuntu-latest
 
     steps:
@@ -59,9 +82,9 @@ jobs:
 
       - name: Update Formula/amlx.rb
         env:
-          SHA256: ${{ needs.release.outputs.sha256 }}
-          TARBALL_URL: ${{ needs.release.outputs.tarball_url }}
           VERSION: ${{ needs.release.outputs.version }}
+          BINARY_SHA256: ${{ needs.build-binary.outputs.binary_sha256 }}
+          BINARY_URL: ${{ needs.build-binary.outputs.binary_url }}
         run: python3 .github/scripts/update_formula.py
 
       - name: Commit and open PR
@@ -82,7 +105,7 @@ jobs:
           git push origin "$BRANCH"
           gh pr create \
             --title "formula: bump to v${VERSION}" \
-            --body "Auto-generated: updates Formula/amlx.rb url and sha256 for v${VERSION}." \
+            --body "Auto-generated: updates Formula/amlx.rb binary url and sha256 for v${VERSION}." \
             --base main \
             --head "$BRANCH" || true
           gh pr merge "$BRANCH" --merge --auto || true
