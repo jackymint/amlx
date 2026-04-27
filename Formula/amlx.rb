@@ -1,10 +1,10 @@
 class Amlx < Formula
   desc "MacBook-first local AI inference server with OpenAI-compatible API"
   homepage "https://github.com/jackymint/amlx"
-  url "https://github.com/jackymint/amlx/releases/download/v1.0.9/amlx-1.0.9-macos-arm64.tar.gz"
-  sha256 "53ad65f031016e66dff043a0a83eb4616c147827f47c8b5103664e667ac470d3"
+  url "https://github.com/jackymint/amlx/releases/download/v1.1.2/amlx-1.1.2-macos-arm64.tar.gz"
+  sha256 "5e947679596630ebd391152f134c39d89da36b84e768854e696683b7d18462e3"
   license "Apache-2.0"
-  version "1.0.9"
+  version "1.1.2"
 
   def install
     bin.install "amlx"
