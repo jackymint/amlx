@@ -55,6 +55,8 @@ http://127.0.0.1:8000/
 
 ## Dashboard
 
+![AMLX Dashboard](docs/screenshot.png)
+
 | Tab | What you can do |
 |-----|----------------|
 | **Home** | Live metrics — cache hits, batch scheduler stats, throughput pulse |
