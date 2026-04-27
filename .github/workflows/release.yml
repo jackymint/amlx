@@ -55,7 +55,8 @@ jobs:
       - name: Install dependencies and PyInstaller
         run: |
           pip install --upgrade pip
-          pip install -e '.[mlx]' 'pyinstaller<6'
+          pip install setuptools 'pyinstaller<6'
+          pip install -e '.[mlx]'
 
       - name: Build binary
         run: |
