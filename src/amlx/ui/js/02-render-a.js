@@ -106,7 +106,7 @@ function renderCatalog() {
     return;
   }
   if (state.modelSearchError) {
-    node.innerHTML = `<div class='job'><span>${escapeHtml(state.modelSearchError)}</span></div>`;
+    node.innerHTML = `<div class="catalog-empty"><span>${escapeHtml(state.modelSearchError)}</span></div>`;
     return;
   }
   if (!state.catalog.length) {
