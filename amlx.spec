@@ -35,17 +35,26 @@ a = Analysis(
 
 pyz = PYZ(a.pure)
 
+# onedir: EXE goes to workpath, COLLECT assembles final dir in distpath
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
+    exclude_binaries=True,
     name="amlx",
     debug=False,
     strip=True,
     upx=False,
     console=True,
     target_arch="arm64",
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    name="amlx",
 )
