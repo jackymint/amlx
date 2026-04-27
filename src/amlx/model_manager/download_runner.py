@@ -55,6 +55,8 @@ class ModelManagerDownloadRunnerMixin:
 
                 def run_default_download() -> None:
                     try:
+                        import os
+                        os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "1")
                         snapshot_download(repo_id=model_id, local_dir=str(local_dir), resume_download=True)
                         result["path"] = local_dir
                     except Exception as exc:
