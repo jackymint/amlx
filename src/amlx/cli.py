@@ -3,19 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import typer
-import uvicorn
 
 from amlx import __version__
-from amlx.adapters.mlx_adapter import MLXAdapter
-from amlx.api.app import create_app
-from amlx.cache.blocks import PagedBlockStore
-from amlx.cache.disk import DiskCache
-from amlx.cache.memory import LRUCache
-from amlx.cache.prefix import PrefixCache
-from amlx.config import ServerConfig
-from amlx.models import ModelManager
-from amlx.scheduler import BatchScheduler
-from amlx.service import InferenceService
 
 app = typer.Typer(
     help="amlx: MacBook-first local inference server",
@@ -37,6 +26,18 @@ def serve(
     gpu_limit_percent: int = typer.Option(100, min=20, max=100, help="Cap average GPU duty cycle to reduce heat"),
     log_level: str = typer.Option("info", help="Uvicorn log level"),
 ) -> None:
+    import uvicorn
+    from amlx.adapters.mlx_adapter import MLXAdapter
+    from amlx.api.app import create_app
+    from amlx.cache.blocks import PagedBlockStore
+    from amlx.cache.disk import DiskCache
+    from amlx.cache.memory import LRUCache
+    from amlx.cache.prefix import PrefixCache
+    from amlx.config import ServerConfig
+    from amlx.models import ModelManager
+    from amlx.scheduler import BatchScheduler
+    from amlx.service import InferenceService
+
     cfg = ServerConfig(
         host=host,
         port=port,
@@ -52,7 +53,6 @@ def serve(
     cfg.ensure_dirs()
 
     adapter = MLXAdapter()
-
     adapter.set_gpu_limit_percent(gpu_limit_percent)
 
     prefix_cache = PrefixCache(
