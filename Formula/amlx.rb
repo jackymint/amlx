@@ -8,6 +8,9 @@ class Amlx < Formula
 
   depends_on "python@3.12"
 
+  # Prevent Homebrew from relinking .so files inside the venv (pydantic_core has no header space)
+  skip_clean "libexec"
+
   def install
     python = Formula["python@3.12"].opt_bin/"python3.12"
     system python, "-m", "venv", libexec
