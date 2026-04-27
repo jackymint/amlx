@@ -71,7 +71,7 @@ async function runPrompt() {
   try {
     const payload = {
       model,
-      messages: state.chat,
+      messages: state.chat.filter((m) => !m.pending),
       max_tokens: 256,
       temperature: 0.2,
     };
