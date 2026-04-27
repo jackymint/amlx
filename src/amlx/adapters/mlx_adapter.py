@@ -23,21 +23,21 @@ class MLXAdapter(ModelAdapter):
     """
 
     def __init__(self) -> None:
-        try:
-            from mlx_lm import load  # type: ignore
-            import mlx.core as mx  # type: ignore
-        except Exception as exc:  # pragma: no cover - depends on optional dep
-            raise RuntimeError(
-                "mlx-lm is not installed. Install with `pip install 'amlx[mlx]'`."
-            ) from exc
-
-        self._load = load
-        self._mx = mx
         self._loaded: dict[str, _LoadedModel] = {}
         self._adapter_paths: dict[str, str | None] = {}
         self._gpu_limit_percent = 100
         self._gpu_limit_state: dict[str, object] = {"supported": False}
-        self._apply_gpu_limit()
+        # mlx imported lazily on first model load to avoid GPU init at startup
+
+    def _ensure_mlx(self) -> tuple[object, object]:
+        try:
+            from mlx_lm import load  # type: ignore
+            import mlx.core as mx  # type: ignore
+        except Exception as exc:
+            raise RuntimeError(
+                "mlx-lm is not installed. Install with `pip install 'amlx[mlx]'`."
+            ) from exc
+        return load, mx
 
     def loaded_models(self) -> list[str]:
         return sorted(self._loaded.keys())
@@ -77,7 +77,9 @@ class MLXAdapter(ModelAdapter):
                 "Use a text-only model instead."
             )
 
-        lm, tokenizer = self._load(model)
+        load_fn, mx = self._ensure_mlx()
+        self._apply_gpu_limit(mx)
+        lm, tokenizer = load_fn(model)
         if target_adapter:
             load_adapters = None
             for module_name in ("mlx_lm", "mlx_lm.utils", "mlx_lm.tuner.utils", "mlx_lm.lora"):
@@ -108,13 +110,13 @@ class MLXAdapter(ModelAdapter):
 
     def set_gpu_limit_percent(self, value: int) -> dict[str, object]:
         self._gpu_limit_percent = self._clamp_gpu_limit(value)
-        self._apply_gpu_limit()
+        # Applied lazily on next model load — avoids GPU init at server startup
         return dict(self._gpu_limit_state)
 
     def gpu_limit_state(self) -> dict[str, object]:
         return dict(self._gpu_limit_state)
 
-    def _apply_gpu_limit(self) -> None:
+    def _apply_gpu_limit(self, mx: object) -> None:
         state: dict[str, object] = {
             "supported": False,
             "mode": "mlx-memory-cap",
@@ -122,7 +124,6 @@ class MLXAdapter(ModelAdapter):
             "applied_percent": self._gpu_limit_percent,
         }
         try:
-            mx = self._mx
             info = mx.device_info()
             recommended = int(info.get("max_recommended_working_set_size") or 0)
             memory_size = int(info.get("memory_size") or 0)

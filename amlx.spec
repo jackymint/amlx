@@ -48,6 +48,6 @@ exe = EXE(
     upx=False,
     console=True,
     target_arch="arm64",
-    # Extract once to a persistent dir — reused on every run after first
-    runtime_tmpdir="/tmp/amlx-runtime",
+    # Extract once to persistent cache — survives reboots, reused every run
+    runtime_tmpdir="~/Library/Caches/amlx",
 )
