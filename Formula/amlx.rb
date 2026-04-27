@@ -7,14 +7,21 @@ class Amlx < Formula
   version "1.1.7"
 
   depends_on "python@3.12"
+  depends_on "rust" => :build
 
-  # Prevent Homebrew from relinking .so files inside the venv (pydantic_core has no header space)
   skip_clean "libexec"
 
   def install
     python = Formula["python@3.12"].opt_bin/"python3.12"
     system python, "-m", "venv", libexec
+
+    # Install all deps from binary wheels
     system libexec/"bin/pip", "install", "--only-binary=:all:", ".[mlx]"
+
+    # Rebuild pydantic-core from source with headerpad so Homebrew can rewrite dylib ID
+    ENV["RUSTFLAGS"] = "-C link-arg=-headerpad_max_install_names"
+    system libexec/"bin/pip", "install", "--no-binary=pydantic-core", "--no-deps", "pydantic-core"
+
     bin.install_symlink libexec/"bin/amlx"
   end
 
