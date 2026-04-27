@@ -7,8 +7,7 @@ class Amlx < Formula
   version "1.0.9"
 
   def install
-    libexec.install Dir["amlx"]
-    bin.install_symlink libexec/"amlx/amlx"
+    bin.install "amlx"
   end
 
   test do
