@@ -18,6 +18,10 @@ class ModelManagerQuantizeTasksMixin:
         self._update_quantize(task_id, status="running", progress=1, message="Starting quantization")
         print(f"[amlx] quantize start: {model_id} → {q_bits}bit → {output_path}", flush=True)
 
+        out_path = Path(output_path)
+        if out_path.exists():
+            shutil.rmtree(out_path)
+
         try:
             from mlx_lm import convert as mlx_convert
 

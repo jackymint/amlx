@@ -43,6 +43,7 @@ class ModelManagerEnqueueMixin:
         lora_rank: int = 8,
         lora_layers: int = 16,
         max_seq_length: int = 2048,
+        batch_size: int = 1,
     ) -> dict[str, str | int | float | None]:
         clean = [s.strip() for s in samples if s and s.strip()]
         if not clean:
@@ -80,6 +81,7 @@ class ModelManagerEnqueueMixin:
             lora_rank=int(lora_rank),
             lora_layers=int(lora_layers),
             max_seq_length=int(max_seq_length),
+            batch_size=int(batch_size),
             train_samples=len(clean),
             started_at=now,
             updated_at=now,

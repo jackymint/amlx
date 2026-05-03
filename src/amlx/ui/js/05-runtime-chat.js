@@ -23,6 +23,7 @@ async function refresh() {
     renderLoadedModels();
     renderChatModelSelect();
     renderTrainModelSelect();
+    renderEvalModelSelect();
   } catch {
     const healthEl = el("runtime-health");
     if (healthEl) {
@@ -37,6 +38,7 @@ async function refresh() {
     renderLoadedModels();
     renderChatModelSelect();
     renderTrainModelSelect();
+    renderEvalModelSelect();
   }
 }
 
@@ -72,8 +74,8 @@ async function runPrompt() {
     const payload = {
       model,
       messages: state.chat.filter((m) => !m.pending),
-      max_tokens: 256,
-      temperature: 0.2,
+      max_tokens: Number((el("chat-max-tokens-select") instanceof HTMLSelectElement ? el("chat-max-tokens-select").value : null) || 512),
+      temperature: Number((el("chat-temperature-select") instanceof HTMLSelectElement ? el("chat-temperature-select").value : null) ?? 0.2),
     };
 
     const res = await fetch("/v1/chat/completions", {

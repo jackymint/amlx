@@ -4,7 +4,7 @@ import json
 import re
 import uuid
 
-from amlx.schemas import ChatCompletionsRequest, ChatMessage, ToolCall, ToolCallFunction, ToolChoiceObject, ToolSpec
+from amlx.schemas import ChatCompletionsRequest, ChatMessage, ToolCall, ToolCallFunction
 
 
 class InferenceHelpersMixin:
@@ -25,77 +25,109 @@ class InferenceHelpersMixin:
         return "\n".join(self._message_to_prompt_line(m) for m in messages)
 
     @staticmethod
-    def _render_tools_prompt(tools: list[ToolSpec] | None) -> str:
-        if not tools:
-            return ""
-        lines = ["AVAILABLE_TOOLS:"]
-        for tool in tools:
-            desc = tool.function.description or ""
-            lines.append(f"- {tool.function.name}: {desc}")
-        return "\n".join(lines)
-
-    @staticmethod
     def _latest_user_content(messages: list[ChatMessage]) -> str:
         for msg in reversed(messages):
             if msg.role == "user":
                 return (msg.content or "").strip()
         return ""
 
-    @staticmethod
-    def _extract_json_object(text: str) -> str | None:
-        code_block = re.search(r"```json\s*(\{.*?\})\s*```", text, flags=re.DOTALL | re.IGNORECASE)
-        if code_block:
-            candidate = code_block.group(1).strip()
-            try:
-                parsed = json.loads(candidate)
-                if isinstance(parsed, dict):
-                    return json.dumps(parsed, ensure_ascii=False)
-            except Exception:
-                return None
+    _THINKING_HEADER = re.compile(
+        r"^\s*(?:Thinking Process|My Thinking|Chain[- ]of[- ]Thought|Reasoning Process)\s*:\s*\n",
+        re.IGNORECASE,
+    )
 
-        start = text.find("{")
-        end = text.rfind("}")
-        if start >= 0 and end > start:
-            candidate = text[start : end + 1].strip()
+    def _build_prompt(self, req: ChatCompletionsRequest) -> str:
+        tokenizer = getattr(self.adapter, "get_tokenizer", lambda _: None)(req.model)
+        if tokenizer is None:
+            return self._render_prompt(req.messages)
+        apply = getattr(tokenizer, "apply_chat_template", None)
+        if apply is None:
+            return self._render_prompt(req.messages)
+        msgs = [{"role": m.role, "content": m.content or ""} for m in req.messages]
+        tools_json = None
+        if req.tools:
+            tools_json = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": t.function.name,
+                        "description": t.function.description or "",
+                        "parameters": t.function.parameters or {},
+                    },
+                }
+                for t in req.tools
+            ]
+        try:
+            if tools_json:
+                try:
+                    return apply(msgs, tools=tools_json, tokenize=False, add_generation_prompt=True)
+                except Exception:
+                    pass
+            return apply(msgs, tokenize=False, add_generation_prompt=True)
+        except Exception:
+            return self._render_prompt(req.messages)
+
+    @staticmethod
+    def _parse_tool_call(text: str) -> ToolCall | None:
+        # Qwen / hermes format: <tool_call>\n{...}\n</tool_call>
+        m = re.search(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", text, re.DOTALL)
+        if m:
             try:
-                parsed = json.loads(candidate)
-                if isinstance(parsed, dict):
-                    return json.dumps(parsed, ensure_ascii=False)
+                obj = json.loads(m.group(1))
+                name = obj.get("name") or obj.get("function")
+                args = obj.get("arguments") or obj.get("parameters") or {}
+                if name:
+                    return ToolCall(
+                        id=f"call_{uuid.uuid4().hex[:20]}",
+                        function=ToolCallFunction(
+                            name=str(name),
+                            arguments=json.dumps(args, ensure_ascii=False),
+                        ),
+                    )
             except Exception:
-                return None
+                pass
         return None
 
-    def _plan_tool_call(self, req: ChatCompletionsRequest) -> ToolCall | None:
-        tools = req.tools or []
-        if not tools or req.tool_choice == "none":
-            return None
+    @staticmethod
+    def _strip_thinking(text: str) -> str:
+        # XML-style tags (DeepSeek-R1, QwQ standard format)
+        text = re.sub(r"<think(?:ing)?>.*?</think(?:ing)?>", "", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<think(?:ing)?>.*$", "", text, flags=re.DOTALL | re.IGNORECASE)
 
-        latest_user = self._latest_user_content(req.messages)
-        tool_names = [tool.function.name for tool in tools]
-        chosen: str | None = None
+        if not InferenceHelpersMixin._THINKING_HEADER.match(text):
+            return text.strip()
 
-        if isinstance(req.tool_choice, ToolChoiceObject):
-            if req.tool_choice.function.name not in tool_names:
-                raise ValueError(f"Requested tool '{req.tool_choice.function.name}' is not in tools.")
-            chosen = req.tool_choice.function.name
-        elif req.tool_choice == "required":
-            chosen = tool_names[0]
-        else:
-            lower_user = latest_user.lower()
-            for name in tool_names:
-                if name.lower() in lower_user:
-                    chosen = name
-                    break
-            if chosen is None:
-                return None
+        original = text
 
-        args = self._extract_json_object(latest_user)
-        if args is None:
-            args = json.dumps({"input": latest_user}, ensure_ascii=False)
-        return ToolCall(
-            id=f"call_{uuid.uuid4().hex[:20]}",
-            function=ToolCallFunction(name=chosen, arguments=args),
+        # Strip "Wait, looking at..." hallucination loops the model gets stuck in
+        text = re.sub(
+            r"\n+Wait,?\s*(?:looking at|I need to|let me re-read|looking again).*$",
+            "",
+            text,
+            flags=re.DOTALL | re.IGNORECASE,
+        ).strip()
+
+        # 1. Explicit "Final Output / Answer / Response:" marker
+        m = re.search(r"Final\s+(?:Output|Answer|Response)[^:]*:\s*\*{0,2}\s*(.+)", text, re.IGNORECASE)
+        if m:
+            answer = m.group(1).strip().split("\n")[0].strip()
+            answer = re.sub(r"\s*\(.*\)\s*$", "", answer).strip().rstrip(".")
+            if answer:
+                return answer
+
+        # 2. Calculation result line: "Calculate: X = Y"
+        m = re.search(
+            r"(?:Calculate|Compute|Result)[:\s]+[^=]+=\s*(.+?)\.?\s*$",
+            text,
+            re.IGNORECASE | re.MULTILINE,
         )
+        if m:
+            result = m.group(1).strip()
+            if result and len(result) < 120:
+                return result
+
+        # 3. Never return empty — fall back to full original text
+        return original
 
     @staticmethod
     def _thinking_requested(req: ChatCompletionsRequest) -> bool:

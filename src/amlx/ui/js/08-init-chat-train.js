@@ -59,18 +59,6 @@ function bindChatAndTrainEvents() {
   on("train-submit", "click", () => {
     void requestTrain();
   });
-  on("train-guide-open", "click", () => {
-    setTrainGuideModalOpen(true);
-  });
-  on("train-guide-close", "click", () => {
-    setTrainGuideModalOpen(false);
-  });
-  on("train-guide-modal", "click", (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLElement)) return;
-    if (target.id !== "train-guide-modal") return;
-    setTrainGuideModalOpen(false);
-  });
   on("train-save-cancel", "click", () => {
     if (state.saveTrainRunning) return;
     setTrainSaveModalOpen(false);
@@ -94,11 +82,6 @@ function bindChatAndTrainEvents() {
 
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
-    const modal = el("train-guide-modal");
-    if (modal instanceof HTMLDivElement && !modal.hidden) {
-      setTrainGuideModalOpen(false);
-      return;
-    }
     const saveModal = el("train-save-modal");
     if (!(saveModal instanceof HTMLDivElement)) return;
     if (saveModal.hidden || state.saveTrainRunning) return;

@@ -155,7 +155,8 @@
   align-items: center;
 }
 
-#model-search {
+#model-search,
+#hf-search-input {
   flex: 1;
   min-width: 160px;
   background: rgba(255, 255, 255, 0.95);

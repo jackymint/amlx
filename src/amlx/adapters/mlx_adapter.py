@@ -193,3 +193,7 @@ class MLXAdapter(ModelAdapter):
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
         )
+
+    def get_tokenizer(self, model: str) -> object | None:
+        entry = self._loaded.get(model)
+        return entry.tokenizer if entry else None

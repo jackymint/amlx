@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 
 from amlx.api.context import ApiContext
 from amlx.schemas import ChatCompletionsRequest, ChatCompletionsResponse
@@ -27,8 +30,8 @@ def register_cache_and_chat_routes(app: FastAPI, ctx: ApiContext) -> None:
             "scheduler_throttle_sleep_ms": ctx.service.scheduler.stats.throttle_sleep_ms,
         }
 
-    @app.post("/v1/chat/completions", response_model=ChatCompletionsResponse)
-    def chat_completions(req: ChatCompletionsRequest) -> ChatCompletionsResponse:
+    @app.post("/v1/chat/completions")
+    def chat_completions(req: ChatCompletionsRequest):
         try:
             effective_model = ctx.resolve_model_ref(req.model)
             if ctx.model_manager is not None:
@@ -39,6 +42,29 @@ def register_cache_and_chat_routes(app: FastAPI, ctx: ApiContext) -> None:
                 ctx.service.adapter.set_adapter_path(effective_model, adapter_path)
             if effective_model != req.model:
                 req = req.model_copy(update={"model": effective_model})
-            return ctx.service.complete(req)
+            resp = ctx.service.complete(req)
+            if not req.stream:
+                return resp
+            return StreamingResponse(_to_sse(resp), media_type="text/event-stream")
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _to_sse(resp: ChatCompletionsResponse):
+    choice = resp.choices[0]
+    content = choice.message.content or ""
+    chunk = {
+        "id": resp.id,
+        "object": "chat.completion.chunk",
+        "created": resp.created,
+        "model": resp.model,
+        "choices": [
+            {
+                "index": 0,
+                "delta": {"role": "assistant", "content": content},
+                "finish_reason": choice.finish_reason,
+            }
+        ],
+    }
+    yield f"data: {json.dumps(chunk)}\n\n"
+    yield "data: [DONE]\n\n"

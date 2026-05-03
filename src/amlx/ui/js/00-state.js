@@ -38,10 +38,15 @@ const state = {
   selectedQuantModel: "",
   quantRunning: false,
   quantStatus: "",
+  importResolvedPath: "",
+  importFolderFiles: null,
+  evalModel: "",
+  evalResults: [],
+  evalRunning: false,
 };
 
 let trainProgressTimer = null;
-const TAB_NAMES = ["metrics", "chat", "models", "training", "quantize"];
+const TAB_NAMES = ["metrics", "chat", "models", "training", "quantize", "eval"];
 
 const el = (id) => document.getElementById(id);
 

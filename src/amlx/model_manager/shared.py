@@ -119,6 +119,7 @@ class FineTuneTask:
     lora_rank: int = 8
     lora_layers: int = 16
     max_seq_length: int = 2048
+    batch_size: int = 1
     finished_at: float | None = None
     adapter_path: str | None = None
     resume_adapter_file: str | None = None

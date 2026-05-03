@@ -15,5 +15,7 @@ if ! python -c "import amlx" 2>/dev/null; then
   pip install -e '.[mlx]'
 fi
 
+lsof -ti :8000 | xargs kill -9 2>/dev/null || true
+
 echo "Starting amlx at http://127.0.0.1:8000/"
 amlx serve --host 127.0.0.1 --port 8000

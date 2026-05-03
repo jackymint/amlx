@@ -1,0 +1,104 @@
+.eval-results {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.eval-card {
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.72);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.eval-card.eval-pending {
+  opacity: 0.5;
+}
+
+.eval-card.eval-fail {
+  border-color: rgba(220, 38, 38, 0.3);
+  background: rgba(254, 242, 242, 0.7);
+}
+
+.eval-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.eval-index {
+  font-size: 0.72rem;
+  color: var(--muted);
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.eval-prompt {
+  flex: 1;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink);
+  word-break: break-word;
+}
+
+.eval-badge {
+  font-size: 0.7rem;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.07);
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.eval-done .eval-badge {
+  background: rgba(17, 24, 39, 0.07);
+  color: var(--muted);
+}
+
+.eval-pass .eval-badge {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+}
+
+.eval-pass {
+  border-color: rgba(16, 185, 129, 0.25);
+}
+
+.eval-fail .eval-badge {
+  background: rgba(220, 38, 38, 0.1);
+  color: #dc2626;
+}
+
+.eval-expected,
+.eval-response {
+  display: flex;
+  gap: 8px;
+  font-size: 0.82rem;
+}
+
+.eval-label {
+  font-size: 0.7rem;
+  color: var(--muted);
+  flex-shrink: 0;
+  padding-top: 2px;
+  min-width: 60px;
+  text-align: right;
+}
+
+.eval-expected span:last-child {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.eval-response span:last-child {
+  color: var(--ink);
+}
+
+.eval-error {
+  font-size: 0.78rem;
+  color: #dc2626;
+}

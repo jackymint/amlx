@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 from amlx.api.context import ApiContext
@@ -62,6 +62,32 @@ def register_models_catalog_routes(app: FastAPI, ctx: ApiContext) -> None:
         manager = ctx.require_model_manager()
         ok = manager.cancel_download(task_id)
         return {"ok": ok, "task_id": task_id}
+
+    @app.post("/v1/models/import")
+    async def models_import(
+        files: list[UploadFile],
+        model_id: str = Form(default=""),
+    ) -> dict[str, object]:
+        manager = ctx.require_model_manager()
+        if not files:
+            raise HTTPException(status_code=422, detail="No files provided")
+        first_rel = files[0].filename or ""
+        from pathlib import Path as _P
+        folder_name = _P(first_rel).parts[0] if first_rel else ""
+        if not folder_name:
+            raise HTTPException(status_code=422, detail="Could not determine folder name")
+        effective_id = model_id.strip() or folder_name
+        file_pairs = []
+        for upload in files:
+            parts = _P(upload.filename or "").parts
+            if len(parts) < 2:
+                continue
+            file_pairs.append(("/".join(parts[1:]), upload.file))
+        try:
+            result = manager.receive_imported_model(folder_name, effective_id, file_pairs)
+            return {"ok": True, **result}
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get("/v1/models/downloads/{task_id}/log")
     async def models_download_log(task_id: str) -> StreamingResponse:

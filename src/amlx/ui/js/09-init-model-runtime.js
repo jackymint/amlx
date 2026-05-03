@@ -70,6 +70,25 @@ function bindModelQuantAndRuntimeEvents() {
     const target = event.target;
     if (target instanceof HTMLInputElement) target.dataset.auto = "";
   });
+  on("import-submit", "click", () => void requestImportLocal());
+  on("import-folder-picker", "change", (event) => {
+    const files = event.target instanceof HTMLInputElement ? event.target.files : null;
+    if (!files || files.length === 0) return;
+    const rel = files[0].webkitRelativePath;
+    const folderName = rel.split("/")[0];
+    if (!folderName) return;
+    const display = el("import-path-display");
+    const idInput = el("import-id-input");
+    const idRow = el("import-id-row");
+    const actions = el("import-actions");
+    state.importResolvedPath = folderName;
+    state.importFolderFiles = Array.from(files);
+    if (display) display.textContent = folderName;
+    if (idInput instanceof HTMLInputElement) idInput.value = folderName;
+    if (idRow) idRow.style.display = "";
+    if (actions) actions.style.display = "";
+    if (event.target instanceof HTMLInputElement) event.target.value = "";
+  });
   on("quant-submit", "click", () => void requestQuantize());
   on("quant-jobs", "click", (event) => {
     const target = event.target;

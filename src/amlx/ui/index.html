@@ -17,6 +17,7 @@
         <button id="tab-models" class="tab" type="button" role="tab" aria-selected="false" data-tab="models" data-tooltip="Download Model" aria-label="Download Model"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg></button>
         <button id="tab-training" class="tab" type="button" role="tab" aria-selected="false" data-tab="training" data-tooltip="Training Model" aria-label="Training Model"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></button>
         <button id="tab-quantize" class="tab" type="button" role="tab" aria-selected="false" data-tab="quantize" data-tooltip="Quantize" aria-label="Quantize"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+        <button id="tab-eval" class="tab" type="button" role="tab" aria-selected="false" data-tab="eval" data-tooltip="Eval" aria-label="Eval"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></button>
       </section>
       <div class="runtime-bar">
         <label class="gpu-limit-control" for="gpu-limit-range"><span>gpu limit</span><input id="gpu-limit-range" type="range" min="20" max="100" step="5" value="100" /><strong id="gpu-limit-value">100%</strong></label>
@@ -33,7 +34,7 @@
 
     <section id="panel-chat" class="tab-panel studio hidden">
       <div class="panel chat-panel">
-        <div class="chat-model-row"><label for="chat-model-select">Chat Model</label><select id="chat-model-select"></select><span id="chat-model-source" class="chip">source: ...</span></div>
+        <div class="chat-model-row"><label for="chat-model-select">Chat Model</label><select id="chat-model-select"></select><span id="chat-model-source" class="chip">source: ...</span><label for="chat-max-tokens-select" class="chat-param-label">Max tokens</label><select id="chat-max-tokens-select"><option value="64">64</option><option value="128">128</option><option value="256">256</option><option value="512" selected>512</option><option value="1024">1024</option><option value="2048">2048</option><option value="4096">4096</option></select><label for="chat-temperature-select" class="chat-param-label">Temp</label><select id="chat-temperature-select"><option value="0">0 (deterministic)</option><option value="0.2" selected>0.2</option><option value="0.5">0.5</option><option value="0.7">0.7</option><option value="1.0">1.0</option></select></div>
         <div id="chat-log" class="chat-log" aria-live="polite"></div>
         <div class="chat-composer"><textarea id="chat-input" rows="1" placeholder="Message amlx..."></textarea><div class="chat-composer-actions"><button id="chat-clear" type="button" class="ghost mini">Clear</button><button id="chat-send" type="button">Send</button></div></div>
       </div>
@@ -44,24 +45,60 @@
       <div class="panel ops-panel">
         <section class="ops-block"><h2>Download Jobs</h2><div id="downloads" class="jobs"><div class="job-empty"><strong>No downloads yet</strong><span>Downloaded models and progress tasks will appear here.</span></div></div></section>
         <section class="ops-block"><h2>Loaded In Memory</h2><div id="loaded-models" class="jobs"><div class="job-empty"><strong>No loaded models</strong><span>Preload a model to run chat and training instantly.</span></div></div></section>
+        <section class="ops-block import-block"><h2>Import Local Model</h2><input id="import-folder-picker" type="file" webkitdirectory style="display:none" /><label for="import-folder-picker" class="import-browse-label">Choose Folder…</label><span id="import-path-display" class="import-path-display"></span><div class="import-id-row" id="import-id-row" style="display:none"><label for="import-id-input">Model ID</label><input id="import-id-input" type="text" placeholder="my-model" /></div><div class="train-actions" id="import-actions" style="display:none"><button id="import-submit" type="button">Import</button><span id="import-status" class="chip" style="display:none;"></span></div><div id="import-progress-wrap" class="train-progress" style="display:none"><div class="train-progress-track"><div id="import-progress-fill" class="train-progress-fill" style="width:0%"></div></div><span id="import-progress-text">0%</span></div></section>
         <section class="ops-block"><h2>Installed Models</h2><div id="installed" class="jobs"><div class="job-empty"><strong>No installed models</strong><span>Downloaded model folders will be listed here for cleanup.</span></div></div></section>
       </div>
     </section>
 
     <section id="panel-training" class="tab-panel studio hidden">
       <div class="panel">
-        <div class="train-header-row"><h2>Train Loaded Model</h2><button id="train-guide-open" type="button" class="guide-trigger" aria-label="Open training guideline">?</button></div>
-        <p class="hint">Choose model + training profile, then upload dataset (.json/.jsonl) to continue profile training automatically.</p>
+        <h2>Train Loaded Model</h2>
         <div id="train-model-info"></div>
         <div class="train-box">
           <div class="train-grid"><div class="train-field train-field-wide"><label for="train-model-select">Model</label><select id="train-model-select"></select></div><div class="train-field train-field-wide"><label for="train-profile-input">Profile</label><input id="train-profile-input" type="text" value="customer-support-v1" placeholder="customer-support-v1" /></div><div class="train-field"><label for="train-epochs-select">Epochs</label><select id="train-epochs-select"><option value="1" selected>1</option><option value="2">2</option><option value="3">3</option><option value="5">5</option><option value="10">10</option><option value="20">20</option></select></div></div>
-          <div class="train-grid train-grid-adv"><div class="train-field"><label for="train-lr-select">Learning Rate</label><select id="train-lr-select"><option value="0.0001">1e-4 (fast)</option><option value="0.00005">5e-5</option><option value="0.00001" selected>1e-5 (default)</option><option value="0.000005">5e-6</option><option value="0.000001">1e-6 (slow)</option></select></div><div class="train-field"><label for="train-lora-rank-select">LoRA Rank</label><select id="train-lora-rank-select"><option value="4">4 (light)</option><option value="8" selected>8 (default)</option><option value="16">16</option><option value="32">32 (heavy)</option></select></div><div class="train-field"><label for="train-lora-layers-select">LoRA Layers</label><select id="train-lora-layers-select"><option value="4">4 (top only)</option><option value="8">8</option><option value="16" selected>16 (default)</option><option value="32">32</option></select></div><div class="train-field"><label for="train-seq-len-select">Max Seq Len</label><select id="train-seq-len-select"><option value="512">512</option><option value="1024">1024</option><option value="2048" selected>2048 (default)</option><option value="4096">4096</option></select></div></div>
-          <div class="train-upload-row"><input id="train-file-input" type="file" accept=".json,.jsonl,application/json,application/x-ndjson" /><p><button id="train-upload-btn" type="button" class="ghost mini">Upload .json/.jsonl</button></p><span id="train-file-meta" class="meta">No file selected.</span></div>
-          <textarea id="train-dataset" rows="4" placeholder="One line = one training sample"></textarea>
+          <div class="train-grid train-grid-adv"><div class="train-field"><label for="train-lr-select">Learning Rate</label><select id="train-lr-select"><option value="0.0001">1e-4 (fast)</option><option value="0.00005">5e-5</option><option value="0.00001" selected>1e-5 (default)</option><option value="0.000005">5e-6</option><option value="0.000001">1e-6 (slow)</option></select></div><div class="train-field"><label for="train-lora-rank-select">LoRA Rank</label><select id="train-lora-rank-select"><option value="4">4 (light)</option><option value="8" selected>8 (default)</option><option value="16">16</option><option value="32">32 (heavy)</option></select></div><div class="train-field"><label for="train-lora-layers-select">LoRA Layers</label><select id="train-lora-layers-select"><option value="4">4 (top only)</option><option value="8">8</option><option value="16" selected>16 (default)</option><option value="32">32</option></select></div><div class="train-field"><label for="train-seq-len-select">Max Seq Len</label><select id="train-seq-len-select"><option value="512">512</option><option value="1024">1024</option><option value="2048" selected>2048 (default)</option><option value="4096">4096</option></select></div><div class="train-field"><label for="train-batch-size-select">Batch Size</label><select id="train-batch-size-select"><option value="1">1 (safe)</option><option value="2" selected>2 (default)</option><option value="4">4</option><option value="6">6</option><option value="8">8 (high)</option></select></div></div>
+          <div class="train-sources">
+            <section class="train-source-block">
+              <h3>Upload File</h3>
+              <div class="train-upload-area"><input id="train-file-input" type="file" accept=".json,.jsonl,application/json,application/x-ndjson" style="display:none" /><button id="train-upload-btn" type="button" class="ghost mini">Choose .json / .jsonl</button><span id="train-file-meta" class="meta">No file selected.</span></div>
+            </section>
+            <section class="train-source-block">
+              <h3>HuggingFace Dataset</h3>
+              <div class="search-row"><input id="hf-search-input" type="search" placeholder="Search datasets… e.g. dolly, alpaca, thai" autocomplete="off" /></div>
+              <div id="hf-catalog" class="catalog hf-catalog" style="display:none"></div>
+              <div id="hf-pager" class="pager" style="display:none"><button id="hf-prev" type="button" class="ghost mini">Prev</button><span id="hf-page-info" class="meta"></span><button id="hf-next" type="button" class="ghost mini">Next</button></div>
+              <div id="hf-load-row" class="hf-load-row" style="display:none">
+                <span class="hf-selected-id" id="hf-selected-label"></span>
+                <select id="hf-split-select"><option value="train" selected>train</option><option value="validation">validation</option><option value="test">test</option></select>
+                <select id="hf-limit-select"><option value="50">50</option><option value="100" selected>100</option><option value="200">200</option><option value="500">500</option></select>
+                <button id="hf-load-btn" type="button">Load</button>
+                <span id="hf-status" class="chip" style="display:none"></span>
+              </div>
+              <input id="hf-dataset-input" type="hidden" value="" />
+            </section>
+          </div>
+          <textarea id="train-dataset" style="display:none"></textarea>
           <div class="train-actions"><button id="train-submit" type="button">RUN</button><span id="train-status" class="chip" style="display:none;"></span></div>
           <div id="train-progress-wrap" class="train-progress" style="display:none;"><div class="train-progress-track"><div id="train-progress-fill" class="train-progress-fill" style="width:0%;"></div></div><span id="train-progress-text">0%</span></div>
-          <div id="training-models" class="jobs"><div class="job-empty"><strong>No training history</strong><span>After training, summaries for each model will show up here.</span></div></div>
         </div>
+        <h2 style="margin-top:18px;margin-bottom:8px">Training History</h2>
+        <div id="training-models" class="jobs"><div class="job-empty"><strong>No training history</strong><span>After training, summaries for each model will show up here.</span></div></div>
+      </div>
+    </section>
+
+    <section id="panel-eval" class="tab-panel studio hidden">
+      <div class="panel">
+        <h2>Eval Trained Model</h2>
+        <p class="hint">ส่ง test prompts ไปให้ model ตอบ แล้วดูว่า model เข้าใจสิ่งที่ train ไปหรือเปล่า</p>
+        <div class="train-box">
+          <div class="train-grid"><div class="train-field train-field-wide"><label for="eval-model-select">Model</label><select id="eval-model-select"></select></div></div>
+          <div class="train-grid train-grid-adv"><div class="train-field"><label for="eval-max-tokens-select">Max tokens</label><select id="eval-max-tokens-select"><option value="128">128</option><option value="256" selected>256</option><option value="512">512</option></select></div><div class="train-field"><label for="eval-temperature-select">Temperature</label><select id="eval-temperature-select"><option value="0" selected>0 (deterministic)</option><option value="0.2">0.2</option><option value="0.5">0.5</option></select></div></div>
+          <div class="train-upload-row"><input id="eval-file-input" type="file" accept=".json,.jsonl" style="display:none" /><p><button id="eval-upload-btn" type="button" class="ghost mini">Upload .json/.jsonl</button></p><span id="eval-file-meta" class="meta">No file selected.</span></div>
+          <textarea id="eval-dataset" rows="5" placeholder="วาง test prompts เหมือน training data&#10;{&quot;prompt&quot;: &quot;what is the weather?&quot;, &quot;response&quot;: &quot;call get_weather&quot;}&#10;หรือ plain text ทีละบรรทัด"></textarea>
+          <div class="train-actions"><button id="eval-submit" type="button">Run Eval</button><span id="eval-status" class="chip" style="display:none;"></span></div>
+          <div id="eval-progress-wrap" class="train-progress" style="display:none"><div class="train-progress-track"><div id="eval-progress-fill" class="train-progress-fill" style="width:0%"></div></div><span id="eval-progress-text">0 / 0</span></div>
+        </div>
+        <div id="eval-results" class="eval-results"></div>
       </div>
     </section>
 
@@ -69,15 +106,6 @@
       <div class="panel"><h2>Quantize Model</h2><p class="hint">Reduce model size using MLX quantization — 4-bit is recommended for a good balance between size and quality</p><div class="train-box"><div class="train-grid"><div class="train-field train-field-wide"><label for="quant-model-select">Model</label><select id="quant-model-select"></select></div><div class="train-field train-field-wide"><label for="quant-output-input">Output Path</label><input id="quant-output-input" type="text" placeholder="./exports/model-4bit" /></div></div><div class="train-grid train-grid-adv"><div class="train-field"><label for="quant-bits-select">Bits</label><select id="quant-bits-select"><option value="2">2-bit (smallest)</option><option value="3">3-bit</option><option value="4" selected>4-bit (recommended)</option><option value="6">6-bit</option><option value="8">8-bit (largest)</option></select></div><div class="train-field"><label for="quant-group-select">Group Size</label><select id="quant-group-select"><option value="32">32 (fine)</option><option value="64" selected>64 (default)</option><option value="128">128 (coarse)</option></select></div></div><div class="train-actions"><button id="quant-submit" type="button">RUN</button><span id="quant-status" class="chip" style="display:none;"></span></div><div id="quant-jobs" class="jobs"><div class="job-empty"><strong>No quantization jobs</strong><span>Quantized models will appear here.</span></div></div></div></div>
     </section>
 
-    <div id="train-guide-modal" class="guide-modal" role="dialog" aria-modal="true" aria-labelledby="train-guide-title" hidden>
-      <div class="guide-modal-card"><div class="guide-modal-head"><h3 id="train-guide-title">Training Guideline</h3><button id="train-guide-close" type="button" class="ghost mini">Close</button></div><p class="guide-modal-sub">Use one intent per sample, keep tool names exact, and include valid JSON arguments.</p><div class="train-guide-grid"><article class="train-sample"><h4>Text (line-based)</h4><pre>When user asks weather, call get_weather with {"city":"Bangkok"}
-Keep answer concise in Thai
-If missing city, ask follow-up first</pre></article><article class="train-sample"><h4>JSON</h4><pre>[
-  {"instruction":"weather intent","output":"call get_weather with city json"},
-  {"prompt":"hours question","response":"answer with business hours"}
-]</pre></article><article class="train-sample"><h4>JSONL</h4><pre>{"text":"use tool search_docs for policy lookup"}
-{"prompt":"find invoice","response":"call find_invoice with {\"id\":\"INV-001\"}"}</pre></article></div></div>
-    </div>
 
     <div id="train-save-modal" class="guide-modal" role="dialog" aria-modal="true" aria-labelledby="train-save-title" hidden>
       <div class="guide-modal-card train-save-card"><div class="guide-modal-head"><h3 id="train-save-title">Export Merged Model</h3><button id="train-save-cancel" type="button" class="ghost mini">Cancel</button></div><p id="train-save-subtitle" class="guide-modal-sub">Choose output path for merged base+adapter model.</p><label for="train-save-path">Output Path</label><input id="train-save-path" type="text" placeholder="./exports/model-task" /><div class="train-actions"><button id="train-save-confirm" type="button">Export</button><span id="train-save-status" class="chip" style="display:none;"></span></div></div>
@@ -95,5 +123,6 @@ If missing city, ask follow-up first</pre></article><article class="train-sample
   <script src="/assets/js/08-init-chat-train.js" defer></script>
   <script src="/assets/js/09-init-model-runtime.js" defer></script>
   <script src="/assets/js/10-init.js" defer></script>
+  <script src="/assets/js/11-eval.js" defer></script>
 </body>
 </html>

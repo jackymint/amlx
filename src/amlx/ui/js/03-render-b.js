@@ -86,7 +86,6 @@ function renderTrainModelSelect() {
     select.innerHTML = `<option value="">No loaded/installed model</option>`;
     select.disabled = true;
     if (button instanceof HTMLButtonElement) button.disabled = true;
-    if (uploadBtn instanceof HTMLButtonElement) uploadBtn.disabled = true;
     if (epochsSelect instanceof HTMLSelectElement) epochsSelect.disabled = true;
     if (profileInput instanceof HTMLInputElement) profileInput.disabled = true;
     if (datasetInput instanceof HTMLTextAreaElement) datasetInput.disabled = true;
@@ -99,14 +98,18 @@ function renderTrainModelSelect() {
     select.disabled = state.trainRunning;
     state.selectedTrainModel = renderSelectOptions(select, options, state.selectedTrainModel, "Select model...");
     if (button instanceof HTMLButtonElement) button.disabled = state.trainRunning || !state.selectedTrainModel;
-    if (uploadBtn instanceof HTMLButtonElement) uploadBtn.disabled = state.trainRunning || !state.selectedTrainModel;
     if (epochsSelect instanceof HTMLSelectElement) epochsSelect.disabled = state.trainRunning;
     if (profileInput instanceof HTMLInputElement) profileInput.disabled = state.trainRunning;
     if (datasetInput instanceof HTMLTextAreaElement) datasetInput.disabled = state.trainRunning;
-    for (const id of ["train-lr-select", "train-lora-rank-select", "train-lora-layers-select", "train-seq-len-select"]) {
+    for (const id of ["train-lr-select", "train-lora-rank-select", "train-lora-layers-select", "train-seq-len-select", "train-batch-size-select"]) {
       const s = el(id);
       if (s instanceof HTMLSelectElement) s.disabled = state.trainRunning;
     }
+  }
+  if (uploadBtn instanceof HTMLButtonElement) uploadBtn.disabled = state.trainRunning;
+  for (const id of ["hf-search-input", "hf-load-btn", "hf-prev", "hf-next", "hf-split-select", "hf-limit-select"]) {
+    const e_ = el(id);
+    if (e_ instanceof HTMLElement) e_.disabled = state.trainRunning;
   }
 
   if (profileInput instanceof HTMLInputElement) {

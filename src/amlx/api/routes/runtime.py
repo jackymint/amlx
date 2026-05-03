@@ -7,6 +7,25 @@ from amlx.schemas import RuntimePowerRequest
 
 
 def register_runtime_routes(app: FastAPI, ctx: ApiContext) -> None:
+    @app.get("/v1/models")
+    def list_models() -> dict[str, object]:
+        loaded = [ctx.display_model_ref(m) for m in ctx.service.adapter.loaded_models()]
+        installed = ctx.model_manager.installed_models() if ctx.model_manager else []
+        all_ids = list({*loaded, *[m.get("model_id", "") for m in installed if m.get("model_id")]})
+        return {
+            "object": "list",
+            "data": [
+                {
+                    "id": model_id,
+                    "object": "model",
+                    "owned_by": "amlx",
+                    "created": 0,
+                }
+                for model_id in all_ids
+                if model_id
+            ],
+        }
+
     @app.get("/v1/runtime")
     def runtime() -> dict[str, object]:
         loaded = [ctx.display_model_ref(m) for m in ctx.service.adapter.loaded_models()]

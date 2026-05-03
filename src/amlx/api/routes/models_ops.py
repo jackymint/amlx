@@ -76,6 +76,7 @@ def register_model_ops_routes(app: FastAPI, ctx: ApiContext) -> None:
                 lora_rank=req.lora_rank,
                 lora_layers=req.lora_layers,
                 max_seq_length=req.max_seq_length,
+                batch_size=req.batch_size,
             )
             return {"ok": True, **task}
         except Exception as exc:

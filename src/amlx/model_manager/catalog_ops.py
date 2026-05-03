@@ -43,6 +43,27 @@ class ModelManagerCatalogOpsMixin:
             }
         return {}
 
+    def receive_imported_model(self, folder_name: str, model_id: str, file_pairs: list[tuple[str, object]]) -> dict[str, str]:
+        dest = self.models_dir / folder_name
+        if dest.exists():
+            raise ValueError(f"Model folder already exists: {folder_name}")
+        dest.mkdir(parents=True, exist_ok=True)
+        try:
+            for rel_path, file_obj in file_pairs:
+                target = dest / rel_path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with open(target, "wb") as f:
+                    shutil.copyfileobj(file_obj, f)
+            marker = dest / "amlx_model.json"
+            marker.write_text(
+                json.dumps({"model_id": model_id, "imported_at": int(time())}),
+                encoding="utf-8",
+            )
+        except Exception:
+            shutil.rmtree(dest, ignore_errors=True)
+            raise
+        return {"model_id": model_id, "path": str(dest)}
+
     def remove_installed_model(self, model_id: str) -> bool:
         target_path: Path | None = None
         for item in self.installed_models():
@@ -65,7 +86,11 @@ class ModelManagerCatalogOpsMixin:
         if not resolved.exists() or not resolved.is_dir():
             return False
 
-        shutil.rmtree(resolved)
+        try:
+            (resolved / "amlx_model.json").unlink(missing_ok=True)
+        except Exception:
+            pass
+        threading.Thread(target=shutil.rmtree, args=(resolved,), kwargs={"ignore_errors": True}, daemon=True).start()
         self._remove_finetunes_for_model(model_id)
         return True
 

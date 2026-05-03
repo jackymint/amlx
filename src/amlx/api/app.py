@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from amlx.api.context import ApiContext
 from amlx.api.routes import (
     register_cache_and_chat_routes,
+    register_datasets_routes,
     register_model_ops_routes,
     register_models_catalog_routes,
     register_runtime_routes,
@@ -39,4 +40,5 @@ def create_app(
     register_models_catalog_routes(app, ctx)
     register_model_ops_routes(app, ctx)
     register_cache_and_chat_routes(app, ctx)
+    register_datasets_routes(app)
     return app

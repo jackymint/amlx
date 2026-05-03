@@ -110,6 +110,18 @@ select {
   white-space: nowrap;
 }
 
+.chat-param-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-left: 4px;
+}
+
+#chat-max-tokens-select,
+#chat-temperature-select {
+  font-size: 0.82rem;
+  padding: 4px 6px;
+}
+
 #chat-model-select {
   flex: 1;
   min-width: 220px;

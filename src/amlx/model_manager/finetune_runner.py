@@ -60,7 +60,7 @@ class ModelManagerFineTuneRunnerMixin:
                     "data": str(data_dir),
                     "fine_tune_type": mlx_fine_type,
                     "optimizer": "adamw",
-                    "batch_size": 1,
+                    "batch_size": int(task.get("batch_size") or 2),
                     "iters": iters,
                     "val_batches": 1,
                     "learning_rate": float(task.get("learning_rate") or 1e-5),

@@ -62,6 +62,7 @@ class ChatCompletionsRequest(BaseModel):
     thinking: ThinkingConfig | None = None
     reasoning_effort: Literal["low", "medium", "high"] | None = None
     metadata: dict[str, Any] | None = None
+    no_cache: bool = False
 
 
 class ChatChoice(BaseModel):
@@ -105,6 +106,7 @@ class ModelTrainRequest(BaseModel):
     lora_rank: int = Field(default=8, ge=4, le=64)
     lora_layers: int = Field(default=16, ge=1, le=64)
     max_seq_length: int = Field(default=2048, ge=128, le=8192)
+    batch_size: int = Field(default=2, ge=1, le=16)
 
 
 class ModelQuantizeRequest(BaseModel):
@@ -120,3 +122,11 @@ class ModelTrainSaveRequest(BaseModel):
     adapter_path: str | None = None
     effective_model: str | None = None
     output_path: str = Field(min_length=1)
+
+
+class DatasetFetchRequest(BaseModel):
+    dataset_id: str
+    split: str = "train"
+    limit: int = Field(default=100, ge=1, le=500)
+
+

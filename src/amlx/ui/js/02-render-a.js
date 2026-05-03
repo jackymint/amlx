@@ -1,10 +1,5 @@
 function setActiveTab(tab) {
-  state.activeTab =
-    tab === "models" ? "models"
-    : tab === "chat" ? "chat"
-    : tab === "training" ? "training"
-    : tab === "quantize" ? "quantize"
-    : "metrics";
+  state.activeTab = TAB_NAMES.includes(tab) ? tab : "metrics";
   for (const name of TAB_NAMES) {
     const panel = el(`panel-${name}`);
     const tabBtn = el(`tab-${name}`);
